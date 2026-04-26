@@ -6,8 +6,10 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +18,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/gopxl/beep"
-	"github.com/gopxl/beep/mp3"
 	"github.com/gopxl/beep/speaker"
 	"github.com/mmcdole/gofeed"
 	"github.com/nfnt/resize"
@@ -52,17 +53,42 @@ type SearchResponse struct {
 }
 
 type albumArtMsg string
+type ffmpegErrMsg struct {
+	generation int
+	text       string
+}
 
-// --- Audio Tracking ---
-type TrackedStreamer struct {
-	beep.Streamer
+// --- Audio ---
+const outputSampleRate = beep.SampleRate(44100)
+
+// PCMStreamer reads raw s16le stereo PCM from an ffmpeg pipe.
+type PCMStreamer struct {
+	reader        io.ReadCloser
+	buf           [4]byte
 	samplesPlayed int64
 }
 
-func (ts *TrackedStreamer) Stream(samples [][2]float64) (n int, ok bool) {
-	n, ok = ts.Streamer.Stream(samples)
-	ts.samplesPlayed += int64(n)
-	return n, ok
+func (s *PCMStreamer) Stream(samples [][2]float64) (n int, ok bool) {
+	for i := range samples {
+		if _, err := io.ReadFull(s.reader, s.buf[:]); err != nil {
+			return i, i > 0
+		}
+		samples[i][0] = float64(int16(s.buf[0])|int16(s.buf[1])<<8) / 32768.0
+		samples[i][1] = float64(int16(s.buf[2])|int16(s.buf[3])<<8) / 32768.0
+		s.samplesPlayed++
+	}
+	return len(samples), true
+}
+
+func (s *PCMStreamer) Err() error { return nil }
+
+// buildAtempoFilter returns an ffmpeg -af value for pitch-preserving speed change.
+// atempo only accepts [0.5, 2.0], so values above 2.0 are chained.
+func buildAtempoFilter(speed float64) string {
+	if speed <= 2.0 {
+		return fmt.Sprintf("atempo=%.4f", speed)
+	}
+	return fmt.Sprintf("atempo=2.0,atempo=%.4f", speed/2.0)
 }
 
 type tickMsg time.Time
@@ -75,13 +101,16 @@ type model struct {
 	feed          *gofeed.Feed
 	cursor        int
 	albumArt      string
-	trackedStream *TrackedStreamer
-	resampler     *beep.Resampler
-	sampleRate    beep.SampleRate
-	totalDuration time.Duration
-	speed         float64
-	windowWidth   int
-	windowHeight  int
+	pcmStreamer      *PCMStreamer
+	ffmpegCmd        *exec.Cmd
+	seekOffset       time.Duration
+	currentURL       string
+	totalDuration    time.Duration
+	speed            float64
+	statusMsg        string
+	ffmpegGeneration int
+	windowWidth      int
+	windowHeight     int
 }
 
 func initialModel() model {
@@ -149,16 +178,71 @@ func fetchAlbumArt(url string) tea.Cmd {
 	}
 }
 
-func (m *model) playAudio(url string) tea.Cmd {
+func (m *model) currentPosition() time.Duration {
+	if m.pcmStreamer == nil {
+		return m.seekOffset
+	}
+	elapsed := time.Duration(m.pcmStreamer.samplesPlayed) * time.Second / time.Duration(outputSampleRate)
+	return m.seekOffset + time.Duration(float64(elapsed)*m.speed)
+}
+
+func (m *model) playAudio(audioURL string, seekTo time.Duration) tea.Cmd {
 	speaker.Clear()
-	resp, _ := http.Get(url)
-	streamer, format, _ := mp3.Decode(resp.Body)
-	m.sampleRate = format.SampleRate
-	m.trackedStream = &TrackedStreamer{Streamer: streamer}
-	m.resampler = beep.ResampleRatio(4, m.speed, m.trackedStream)
-	speaker.Init(format.SampleRate, format.SampleRate.N(time.Second/10))
-	speaker.Play(m.resampler)
-	return tick()
+	if m.ffmpegCmd != nil {
+		m.ffmpegCmd.Process.Kill()
+		m.ffmpegCmd.Wait()
+	}
+
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		m.statusMsg = "ffmpeg not found — install with: brew install ffmpeg"
+		return tick()
+	}
+
+	args := []string{"-loglevel", "error"}
+	if seekTo > 0 {
+		args = append(args, "-ss", fmt.Sprintf("%.3f", seekTo.Seconds()))
+	}
+	args = append(args,
+		"-i", audioURL,
+		"-af", buildAtempoFilter(m.speed),
+		"-f", "s16le",
+		"-ar", "44100",
+		"-ac", "2",
+		"pipe:1",
+	)
+
+	cmd := exec.Command("ffmpeg", args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("ffmpeg pipe error: %v", err)
+		return tick()
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		m.statusMsg = fmt.Sprintf("ffmpeg pipe error: %v", err)
+		return tick()
+	}
+	if err := cmd.Start(); err != nil {
+		m.statusMsg = fmt.Sprintf("ffmpeg failed to start: %v", err)
+		return tick()
+	}
+
+	m.ffmpegCmd = cmd
+	m.pcmStreamer = &PCMStreamer{reader: stdout}
+	m.seekOffset = seekTo
+	m.currentURL = audioURL
+	m.statusMsg = ""
+	m.ffmpegGeneration++
+	gen := m.ffmpegGeneration
+
+	speaker.Init(outputSampleRate, outputSampleRate.N(time.Second/10))
+	speaker.Play(m.pcmStreamer)
+
+	stderrCmd := func() tea.Msg {
+		data, _ := io.ReadAll(stderr)
+		return ffmpegErrMsg{generation: gen, text: strings.TrimSpace(string(data))}
+	}
+	return tea.Batch(tick(), stderrCmd)
 }
 
 func tick() tea.Cmd {
@@ -182,6 +266,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case albumArtMsg:
 		m.albumArt = string(msg)
+	case ffmpegErrMsg:
+		if msg.generation == m.ffmpegGeneration && msg.text != "" {
+			m.statusMsg = "ffmpeg: " + msg.text
+		}
 	case tickMsg:
 		if m.state == viewPlayer {
 			return m, tick()
@@ -189,6 +277,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
+			if m.ffmpegCmd != nil {
+				m.ffmpegCmd.Process.Kill()
+			}
 			return m, tea.Quit
 		case "esc", "backspace":
 			if m.state > viewSearch {
@@ -202,22 +293,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.cursor++
 		case "[":
-			if m.speed > 0.5 {
+			if m.speed > 0.5 && m.pcmStreamer != nil {
+				pos := m.currentPosition()
 				m.speed -= 0.25
-				if m.resampler != nil {
-					speaker.Lock()
-					m.resampler.SetRatio(m.speed)
-					speaker.Unlock()
-				}
+				return m, m.playAudio(m.currentURL, pos)
 			}
 		case "]":
-			if m.speed < 3.0 {
+			if m.speed < 3.0 && m.pcmStreamer != nil {
+				pos := m.currentPosition()
 				m.speed += 0.25
-				if m.resampler != nil {
-					speaker.Lock()
-					m.resampler.SetRatio(m.speed)
-					speaker.Unlock()
-				}
+				return m, m.playAudio(m.currentURL, pos)
 			}
 		case "enter":
 			if m.state == viewSearch {
@@ -229,7 +314,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = viewPlayer
 				item := m.feed.Items[m.cursor]
 				m.totalDuration = parseDuration(item.ITunesExt.Duration)
-				return m, m.playAudio(item.Enclosures[0].URL)
+				return m, m.playAudio(item.Enclosures[0].URL, 0)
 			}
 		}
 	}
@@ -276,19 +361,25 @@ func (m model) View() string {
 		item := m.feed.Items[m.cursor]
 		var pct float64
 		var cur time.Duration
-		if m.trackedStream != nil {
-			cur = m.sampleRate.D(int(m.trackedStream.samplesPlayed))
+		if m.pcmStreamer != nil {
+			cur = m.currentPosition()
 			if m.totalDuration > 0 {
 				pct = float64(cur) / float64(m.totalDuration)
 			}
 		}
 		timeStr := fmt.Sprintf("%s / %s", formatDur(cur), formatDur(m.totalDuration))
 
+		statusLine := faintStyle.Render("Loading...")
+		if m.statusMsg != "" {
+			statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.statusMsg)
+		} else if m.pcmStreamer != nil && m.pcmStreamer.samplesPlayed > 0 {
+			statusLine = accentStyle.Render(fmt.Sprintf("%.2fx Speed", m.speed))
+		}
 		info := lipgloss.JoinVertical(lipgloss.Left,
 			accentStyle.Render("▶ NOW PLAYING"),
 			titleStyle.Copy().Width(m.windowWidth-50).Render(item.Title),
 			"\n", m.renderSlider(pct, m.windowWidth-50, timeStr),
-			"\n", accentStyle.Render(fmt.Sprintf("%.2fx Speed", m.speed)),
+			"\n", statusLine,
 			faintStyle.Render("\n[ Slow | ] Fast | Esc Back"),
 		)
 		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
