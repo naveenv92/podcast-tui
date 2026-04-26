@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -58,24 +59,61 @@ type ffmpegErrMsg struct {
 	text       string
 }
 
+// swapPayload carries a pre-warmed reader and its pre-buffered audio to PCMStreamer.
+type swapPayload struct {
+	prebuf []byte
+	reader io.ReadCloser
+}
+
+// seekDoneMsg is returned when a background seek finishes.
+type seekDoneMsg struct {
+	cmd *exec.Cmd
+	gen int
+}
+
+// seekTimerMsg fires after the debounce delay; stale ones are dropped via seq.
+type seekTimerMsg struct {
+	target time.Duration
+	seq    int
+}
+
 // --- Audio ---
 const outputSampleRate = beep.SampleRate(44100)
 
 // PCMStreamer reads raw s16le stereo PCM from an ffmpeg pipe.
+// It supports seamless reader swaps via pendSwap for skip-without-gap seeks.
 type PCMStreamer struct {
 	reader        io.ReadCloser
+	prebuf        []byte
+	prebufPos     int
 	buf           [4]byte
-	samplesPlayed int64
+	samplesPlayed int64 // accessed atomically
+	pendSwap      chan swapPayload
 }
 
 func (s *PCMStreamer) Stream(samples [][2]float64) (n int, ok bool) {
+	// Non-blocking check: swap to pre-warmed reader if one is ready.
+	select {
+	case sw := <-s.pendSwap:
+		s.reader.Close()
+		s.reader = sw.reader
+		s.prebuf = sw.prebuf
+		s.prebufPos = 0
+		atomic.StoreInt64(&s.samplesPlayed, 0)
+	default:
+	}
+
 	for i := range samples {
-		if _, err := io.ReadFull(s.reader, s.buf[:]); err != nil {
+		var frame [4]byte
+		if s.prebufPos < len(s.prebuf) {
+			copy(frame[:], s.prebuf[s.prebufPos:s.prebufPos+4])
+			s.prebufPos += 4
+		} else if _, err := io.ReadFull(s.reader, frame[:]); err != nil {
 			return i, i > 0
 		}
-		samples[i][0] = float64(int16(s.buf[0])|int16(s.buf[1])<<8) / 32768.0
-		samples[i][1] = float64(int16(s.buf[2])|int16(s.buf[3])<<8) / 32768.0
-		s.samplesPlayed++
+		samples[i][0] = float64(int16(frame[0])|int16(frame[1])<<8) / 32768.0
+		samples[i][1] = float64(int16(frame[2])|int16(frame[3])<<8) / 32768.0
+		atomic.AddInt64(&s.samplesPlayed, 1)
 	}
 	return len(samples), true
 }
@@ -95,20 +133,24 @@ type tickMsg time.Time
 
 // --- Model ---
 type model struct {
-	state         int
-	textInput     textinput.Model
-	searchResults []SearchResult
-	feed          *gofeed.Feed
-	cursor        int
-	albumArt      string
+	state            int
+	textInput        textinput.Model
+	searchResults    []SearchResult
+	feed             *gofeed.Feed
+	cursor           int
+	albumArt         string
 	pcmStreamer      *PCMStreamer
+	ctrl             *beep.Ctrl
 	ffmpegCmd        *exec.Cmd
 	seekOffset       time.Duration
 	currentURL       string
 	totalDuration    time.Duration
 	speed            float64
+	paused           bool
 	statusMsg        string
 	ffmpegGeneration int
+	seekPending      bool // true while a background seek is in-flight
+	seekSeq          int  // incremented on each keypress to expire stale debounce timers
 	windowWidth      int
 	windowHeight     int
 }
@@ -182,7 +224,7 @@ func (m *model) currentPosition() time.Duration {
 	if m.pcmStreamer == nil {
 		return m.seekOffset
 	}
-	elapsed := time.Duration(m.pcmStreamer.samplesPlayed) * time.Second / time.Duration(outputSampleRate)
+	elapsed := time.Duration(atomic.LoadInt64(&m.pcmStreamer.samplesPlayed)) * time.Second / time.Duration(outputSampleRate)
 	return m.seekOffset + time.Duration(float64(elapsed)*m.speed)
 }
 
@@ -191,6 +233,14 @@ func (m *model) playAudio(audioURL string, seekTo time.Duration) tea.Cmd {
 	if m.ffmpegCmd != nil {
 		m.ffmpegCmd.Process.Kill()
 		m.ffmpegCmd.Wait()
+	}
+	// Drain any in-flight seek payload so its reader gets closed.
+	if m.pcmStreamer != nil {
+		select {
+		case old := <-m.pcmStreamer.pendSwap:
+			old.reader.Close()
+		default:
+		}
 	}
 
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
@@ -228,21 +278,70 @@ func (m *model) playAudio(audioURL string, seekTo time.Duration) tea.Cmd {
 	}
 
 	m.ffmpegCmd = cmd
-	m.pcmStreamer = &PCMStreamer{reader: stdout}
+	m.pcmStreamer = &PCMStreamer{reader: stdout, pendSwap: make(chan swapPayload, 1)}
+	m.ctrl = &beep.Ctrl{Streamer: m.pcmStreamer}
 	m.seekOffset = seekTo
 	m.currentURL = audioURL
 	m.statusMsg = ""
+	m.paused = false
+	m.seekPending = false
+	m.seekSeq++
 	m.ffmpegGeneration++
 	gen := m.ffmpegGeneration
 
 	speaker.Init(outputSampleRate, outputSampleRate.N(time.Second/10))
-	speaker.Play(m.pcmStreamer)
+	speaker.Play(m.ctrl)
 
 	stderrCmd := func() tea.Msg {
 		data, _ := io.ReadAll(stderr)
 		return ffmpegErrMsg{generation: gen, text: strings.TrimSpace(string(data))}
 	}
 	return tea.Batch(tick(), stderrCmd)
+}
+
+// doSeek starts a new ffmpeg process at target, pre-reads ~93ms into a buffer,
+// then queues an atomic reader swap into the live PCMStreamer so there is no
+// audio gap. Old audio keeps playing until the swap fires.
+func doSeek(pcm *PCMStreamer, oldCmd *exec.Cmd, audioURL string, target time.Duration, speed float64, gen int) tea.Cmd {
+	return func() tea.Msg {
+		args := []string{"-loglevel", "error"}
+		if target > 0 {
+			args = append(args, "-ss", fmt.Sprintf("%.3f", target.Seconds()))
+		}
+		args = append(args,
+			"-i", audioURL,
+			"-af", buildAtempoFilter(speed),
+			"-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1",
+		)
+		cmd := exec.Command("ffmpeg", args...)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return seekDoneMsg{gen: gen}
+		}
+		if err := cmd.Start(); err != nil {
+			return seekDoneMsg{gen: gen}
+		}
+
+		// Pre-read ~93ms (4096 frames × 4 bytes) so Stream never starves at swap time.
+		prebuf := make([]byte, 4096*4)
+		n, _ := io.ReadFull(stdout, prebuf)
+
+		// Drain any stale pending swap before sending ours.
+		select {
+		case old := <-pcm.pendSwap:
+			old.reader.Close()
+		default:
+		}
+		pcm.pendSwap <- swapPayload{prebuf: prebuf[:n], reader: stdout}
+
+		// Kill the process that was playing before this seek started.
+		if oldCmd != nil {
+			oldCmd.Process.Kill()
+			go oldCmd.Wait()
+		}
+
+		return seekDoneMsg{cmd: cmd, gen: gen}
+	}
 }
 
 func tick() tea.Cmd {
@@ -270,6 +369,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.generation == m.ffmpegGeneration && msg.text != "" {
 			m.statusMsg = "ffmpeg: " + msg.text
 		}
+	case seekTimerMsg:
+		if msg.seq == m.seekSeq && m.pcmStreamer != nil {
+			if m.seekPending {
+				// A seek is still in-flight; retry once it has time to finish.
+				m.seekSeq++
+				seq := m.seekSeq
+				target := m.seekOffset
+				return m, tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg {
+					return seekTimerMsg{target: target, seq: seq}
+				})
+			}
+			m.seekPending = true
+			return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, msg.target, m.speed, m.ffmpegGeneration)
+		}
+	case seekDoneMsg:
+		m.seekPending = false
+		if msg.cmd != nil {
+			if msg.gen == m.ffmpegGeneration {
+				// Valid seek for the current playback session: track the new process.
+				if m.ffmpegCmd != nil {
+					m.ffmpegCmd.Process.Kill()
+					go m.ffmpegCmd.Wait()
+				}
+				m.ffmpegCmd = msg.cmd
+			} else {
+				// Superseded by a speed change: kill the orphaned process.
+				msg.cmd.Process.Kill()
+				go msg.cmd.Wait()
+			}
+		}
 	case tickMsg:
 		if m.state == viewPlayer {
 			return m, tick()
@@ -292,17 +421,62 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "down", "j":
 			m.cursor++
-		case "[":
+		case " ":
+			if m.state == viewPlayer && m.ctrl != nil {
+				speaker.Lock()
+				m.ctrl.Paused = !m.ctrl.Paused
+				m.paused = m.ctrl.Paused
+				speaker.Unlock()
+			}
+		case "left":
+			if m.pcmStreamer != nil {
+				target := m.currentPosition() - 10*time.Second
+				if target < 0 {
+					target = 0
+				}
+				m.seekOffset = target
+				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
+				m.seekSeq++
+				seq := m.seekSeq
+				return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
+					return seekTimerMsg{target: target, seq: seq}
+				})
+			}
+		case "right":
+			if m.pcmStreamer != nil {
+				target := m.currentPosition() + 30*time.Second
+				if m.totalDuration > 0 && target > m.totalDuration {
+					target = m.totalDuration
+				}
+				m.seekOffset = target
+				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
+				m.seekSeq++
+				seq := m.seekSeq
+				return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
+					return seekTimerMsg{target: target, seq: seq}
+				})
+			}
+		case "-":
 			if m.speed > 0.5 && m.pcmStreamer != nil {
 				pos := m.currentPosition()
 				m.speed -= 0.25
-				return m, m.playAudio(m.currentURL, pos)
+				m.seekOffset = pos
+				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
+				m.seekSeq++
+				m.seekPending = false
+				m.ffmpegGeneration++
+				return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, pos, m.speed, m.ffmpegGeneration)
 			}
-		case "]":
+		case "+", "=":
 			if m.speed < 3.0 && m.pcmStreamer != nil {
 				pos := m.currentPosition()
 				m.speed += 0.25
-				return m, m.playAudio(m.currentURL, pos)
+				m.seekOffset = pos
+				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
+				m.seekSeq++
+				m.seekPending = false
+				m.ffmpegGeneration++
+				return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, pos, m.speed, m.ffmpegGeneration)
 			}
 		case "enter":
 			if m.state == viewSearch {
@@ -372,7 +546,9 @@ func (m model) View() string {
 		statusLine := faintStyle.Render("Loading...")
 		if m.statusMsg != "" {
 			statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.statusMsg)
-		} else if m.pcmStreamer != nil && m.pcmStreamer.samplesPlayed > 0 {
+		} else if m.paused {
+			statusLine = accentStyle.Render("⏸ Paused")
+		} else if m.pcmStreamer != nil && atomic.LoadInt64(&m.pcmStreamer.samplesPlayed) > 0 {
 			statusLine = accentStyle.Render(fmt.Sprintf("%.2fx Speed", m.speed))
 		}
 		info := lipgloss.JoinVertical(lipgloss.Left,
@@ -380,7 +556,7 @@ func (m model) View() string {
 			titleStyle.Copy().Width(m.windowWidth-50).Render(item.Title),
 			"\n", m.renderSlider(pct, m.windowWidth-50, timeStr),
 			"\n", statusLine,
-			faintStyle.Render("\n[ Slow | ] Fast | Esc Back"),
+			faintStyle.Render("\n← -10s | → +30s | - Slow | + Fast | Space Pause | Esc Back"),
 		)
 		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
 	}
