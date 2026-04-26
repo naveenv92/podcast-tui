@@ -181,6 +181,7 @@ type model struct {
 	goToErr          string
 	windowWidth      int
 	windowHeight     int
+	playingTitle     string
 }
 
 func initialModel() model {
@@ -433,7 +434,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case tickMsg:
-		if m.state == viewPlayer {
+		if m.pcmStreamer != nil {
 			return m, tick()
 		}
 	case tea.KeyMsg:
@@ -483,6 +484,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "down", "j":
 			m.cursor++
+		case "p":
+			if m.state != viewSearch && m.pcmStreamer != nil {
+				m.state = viewPlayer
+				return m, nil
+			}
+		case "ctrl+p":
+			if m.pcmStreamer != nil {
+				m.state = viewPlayer
+				return m, nil
+			}
 		case "g":
 			if m.state == viewPlayer && m.pcmStreamer != nil {
 				m.showGoTo = true
@@ -491,7 +502,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.goToInput.Focus()
 			}
 		case " ":
-			if m.state == viewPlayer && m.ctrl != nil {
+			if m.state != viewSearch && m.ctrl != nil {
+				speaker.Lock()
+				m.ctrl.Paused = !m.ctrl.Paused
+				m.paused = m.ctrl.Paused
+				speaker.Unlock()
+				return m, nil
+			}
+		case "ctrl+ ":
+			if m.state == viewSearch && m.ctrl != nil {
 				speaker.Lock()
 				m.ctrl.Paused = !m.ctrl.Paused
 				m.paused = m.ctrl.Paused
@@ -557,6 +576,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = viewPlayer
 				item := m.feed.Items[m.cursor]
 				m.totalDuration = parseDuration(item.ITunesExt.Duration)
+				m.playingTitle = item.Title
 				return m, m.playAudio(item.Enclosures[0].URL, 0)
 			}
 		}
@@ -572,6 +592,57 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+// renderNowPlayingBar returns a 2-line footer with episode title and progress.
+// Returns "" when nothing is playing.
+func (m model) renderNowPlayingBar() string {
+	if m.pcmStreamer == nil || m.playingTitle == "" {
+		return ""
+	}
+
+	cur := m.currentPosition()
+	var pct float64
+	if m.totalDuration > 0 {
+		pct = float64(cur) / float64(m.totalDuration)
+	}
+	timeStr := fmt.Sprintf("%s / %s", formatDur(cur), formatDur(m.totalDuration))
+
+	playIcon := "▶"
+	if m.paused {
+		playIcon = "⏸"
+	}
+
+	toggleKey, spaceKey := "p", "space"
+	if m.state == viewSearch {
+		toggleKey, spaceKey = "ctrl+p", "ctrl+space"
+	}
+	spaceIcon := "⏸"
+	if m.paused {
+		spaceIcon = "▶"
+	}
+	hintText := fmt.Sprintf("  ·  %s to toggle  ·  %s %s", toggleKey, spaceKey, spaceIcon)
+
+	const sliderWidth = 20
+	// 2 (icon+space) + title + 2 (gap) + sliderWidth + 2 (gap) + len(timeStr) + len(hintText)
+	titleMaxWidth := m.windowWidth - 2 - sliderWidth - 2 - len(timeStr) - len(hintText) - 4
+	if titleMaxWidth < 8 {
+		titleMaxWidth = 8
+	}
+
+	title := m.playingTitle
+	runes := []rune(title)
+	if len(runes) > titleMaxWidth {
+		title = string(runes[:titleMaxWidth-1]) + "…"
+	}
+
+	pos := int(pct * float64(sliderWidth))
+	slider := fillStyle.Render(strings.Repeat("━", pos)) + barStyle.Render(strings.Repeat("─", max(0, sliderWidth-pos)))
+	hint := faintStyle.Render(hintText)
+	separator := barStyle.Render(strings.Repeat("─", m.windowWidth))
+	infoLine := accentStyle.Render(playIcon+" ") + title + "  " + slider + "  " + faintStyle.Render(timeStr) + hint
+	center := lipgloss.NewStyle().Width(m.windowWidth).Align(lipgloss.Center)
+	return separator + "\n" + center.Render(infoLine)
 }
 
 // --- View ---
@@ -660,7 +731,24 @@ func (m model) View() string {
 		)
 		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
 	}
-	return lipgloss.Place(m.windowWidth, m.windowHeight, lipgloss.Center, lipgloss.Center, content)
+	nowPlayingBar := ""
+	barHeight := 0
+	if m.state != viewPlayer {
+		nowPlayingBar = m.renderNowPlayingBar()
+		if nowPlayingBar != "" {
+			barHeight = 2
+		}
+	}
+
+	availHeight := m.windowHeight - barHeight
+	if availHeight < 1 {
+		availHeight = 1
+	}
+	mainArea := lipgloss.Place(m.windowWidth, availHeight, lipgloss.Center, lipgloss.Center, content)
+	if nowPlayingBar != "" {
+		return mainArea + "\n" + nowPlayingBar
+	}
+	return mainArea
 }
 
 func (m model) renderSlider(pct float64, width int, timeInfo string) string {
