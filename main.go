@@ -483,7 +483,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			m.cursor++
+			switch m.state {
+			case viewResults:
+				if m.cursor < len(m.searchResults)-1 {
+					m.cursor++
+				}
+			case viewEpisodes:
+				if m.feed != nil && m.cursor < len(m.feed.Items)-1 {
+					m.cursor++
+				}
+			default:
+				m.cursor++
+			}
 		case "p":
 			if m.state != viewSearch && m.pcmStreamer != nil {
 				m.state = viewPlayer
@@ -663,18 +674,50 @@ func (m model) View() string {
 			}
 		}
 	case viewEpisodes:
+		const visibleCount = 15
+		scrollTop := 0
+		if m.cursor >= visibleCount {
+			scrollTop = m.cursor - visibleCount + 1
+		}
+		const dateColWidth = 12 // "Jan 02, 2006"
+		// Row layout: cursor(2) + "| "(2) + date(12) + " | "(3) + title(N) + " |"(2) = 21+N
+		titleColWidth := m.windowWidth - 31
+		if titleColWidth < 20 {
+			titleColWidth = 20
+		}
+		if titleColWidth > 80 {
+			titleColWidth = 80
+		}
+		header := fmt.Sprintf("  | %-*s | %-*s |", dateColWidth, "Date", titleColWidth, "Episode")
+		divider := fmt.Sprintf("  |%s|%s|", strings.Repeat("-", dateColWidth+2), strings.Repeat("-", titleColWidth+2))
+		emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s |", dateColWidth, "", titleColWidth, "")
 		content = titleStyle.Render("Episodes:") + "\n\n"
+		content += faintStyle.Render(header) + "\n"
+		content += faintStyle.Render(divider) + "\n"
+		rendered := 0
 		for i, e := range m.feed.Items {
-			if i > 12 {
-				break
+			if i < scrollTop || i >= scrollTop+visibleCount {
+				continue
 			}
-			cursor := "  "
+			dateStr := strings.Repeat(" ", dateColWidth)
+			if e.PublishedParsed != nil {
+				dateStr = e.PublishedParsed.Format("Jan 02, 2006")
+			}
+			title := e.Title
+			if runes := []rune(title); len(runes) > titleColWidth {
+				title = string(runes[:titleColWidth-1]) + "…"
+			}
+			row := fmt.Sprintf("| %-*s | %-*s |", dateColWidth, dateStr, titleColWidth, title)
 			if m.cursor == i {
-				cursor = "> "
-				content += selStyle.Render(cursor+e.Title) + "\n"
+				content += selStyle.Render("> "+row) + "\n"
 			} else {
-				content += cursor + e.Title + "\n"
+				content += "  " + row + "\n"
 			}
+			rendered++
+		}
+		for rendered < visibleCount {
+			content += emptyRow + "\n"
+			rendered++
 		}
 	case viewPlayer:
 		if m.showGoTo {
