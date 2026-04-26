@@ -129,6 +129,31 @@ func buildAtempoFilter(speed float64) string {
 	return fmt.Sprintf("atempo=2.0,atempo=%.4f", speed/2.0)
 }
 
+// parseGoToTime parses "MM:SS" or "HH:MM:SS" into a duration.
+func parseGoToTime(s string) (time.Duration, error) {
+	parts := strings.Split(strings.TrimSpace(s), ":")
+	atoi := func(v string) (int, error) { return strconv.Atoi(v) }
+	switch len(parts) {
+	case 2:
+		m, e1 := atoi(parts[0])
+		sec, e2 := atoi(parts[1])
+		if e1 != nil || e2 != nil || m < 0 || sec < 0 || sec >= 60 {
+			return 0, fmt.Errorf("use MM:SS or HH:MM:SS")
+		}
+		return time.Duration(m)*time.Minute + time.Duration(sec)*time.Second, nil
+	case 3:
+		h, e1 := atoi(parts[0])
+		m, e2 := atoi(parts[1])
+		sec, e3 := atoi(parts[2])
+		if e1 != nil || e2 != nil || e3 != nil || h < 0 || m < 0 || m >= 60 || sec < 0 || sec >= 60 {
+			return 0, fmt.Errorf("use MM:SS or HH:MM:SS")
+		}
+		return time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(sec)*time.Second, nil
+	default:
+		return 0, fmt.Errorf("use MM:SS or HH:MM:SS")
+	}
+}
+
 type tickMsg time.Time
 
 // --- Model ---
@@ -151,6 +176,9 @@ type model struct {
 	ffmpegGeneration int
 	seekPending      bool // true while a background seek is in-flight
 	seekSeq          int  // incremented on each keypress to expire stale debounce timers
+	showGoTo         bool
+	goToInput        textinput.Model
+	goToErr          string
 	windowWidth      int
 	windowHeight     int
 }
@@ -160,9 +188,14 @@ func initialModel() model {
 	ti.Placeholder = "Search for a podcast..."
 	ti.Focus()
 
+	gti := textinput.New()
+	gti.Placeholder = "00:00:00"
+	gti.CharLimit = 8
+
 	return model{
 		state:     viewSearch,
 		textInput: ti,
+		goToInput: gti,
 		speed:     1.0,
 	}
 }
@@ -404,6 +437,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tick()
 		}
 	case tea.KeyMsg:
+		if m.showGoTo {
+			switch msg.String() {
+			case "esc":
+				m.showGoTo = false
+				m.goToErr = ""
+				m.goToInput.SetValue("")
+			case "enter":
+				target, err := parseGoToTime(m.goToInput.Value())
+				if err != nil {
+					m.goToErr = err.Error()
+				} else if m.totalDuration > 0 && target > m.totalDuration {
+					m.goToErr = fmt.Sprintf("beyond track end (%s)", formatDur(m.totalDuration))
+				} else {
+					m.showGoTo = false
+					m.goToErr = ""
+					m.goToInput.SetValue("")
+					m.seekOffset = target
+					atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
+					m.seekSeq++
+					m.seekPending = true
+					return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, target, m.speed, m.ffmpegGeneration)
+				}
+			default:
+				var cmd tea.Cmd
+				m.goToInput, cmd = m.goToInput.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.ffmpegCmd != nil {
@@ -421,6 +483,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "down", "j":
 			m.cursor++
+		case "g":
+			if m.state == viewPlayer && m.pcmStreamer != nil {
+				m.showGoTo = true
+				m.goToErr = ""
+				m.goToInput.SetValue("")
+				return m, m.goToInput.Focus()
+			}
 		case " ":
 			if m.state == viewPlayer && m.ctrl != nil {
 				speaker.Lock()
@@ -492,6 +561,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if m.showGoTo {
+		var cmd tea.Cmd
+		m.goToInput, cmd = m.goToInput.Update(msg)
+		return m, cmd
+	}
 	if m.state == viewSearch {
 		var cmd tea.Cmd
 		m.textInput, cmd = m.textInput.Update(msg)
@@ -532,6 +606,25 @@ func (m model) View() string {
 			}
 		}
 	case viewPlayer:
+		if m.showGoTo {
+			rows := []string{
+				accentStyle.Render("Go To Position"),
+				faintStyle.Render("MM:SS or HH:MM:SS"),
+				"",
+				m.goToInput.View(),
+			}
+			if m.goToErr != "" {
+				rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.goToErr))
+			}
+			rows = append(rows, "", faintStyle.Render("Enter confirm · Esc cancel"))
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
 		item := m.feed.Items[m.cursor]
 		var pct float64
 		var cur time.Duration
@@ -543,20 +636,27 @@ func (m model) View() string {
 		}
 		timeStr := fmt.Sprintf("%s / %s", formatDur(cur), formatDur(m.totalDuration))
 
-		statusLine := faintStyle.Render("Loading...")
+		var statusLine string
 		if m.statusMsg != "" {
 			statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.statusMsg)
 		} else if m.paused {
-			statusLine = accentStyle.Render("⏸ Paused")
+			statusLine = faintStyle.Render("- ") + accentStyle.Render("⏸  Paused") + faintStyle.Render(" +")
 		} else if m.pcmStreamer != nil && atomic.LoadInt64(&m.pcmStreamer.samplesPlayed) > 0 {
-			statusLine = accentStyle.Render(fmt.Sprintf("%.2fx Speed", m.speed))
+			statusLine = faintStyle.Render("- ") + accentStyle.Render(fmt.Sprintf("%.2fx Speed", m.speed)) + faintStyle.Render(" +")
+		} else {
+			statusLine = faintStyle.Render("Loading...")
+		}
+
+		spaceLabel := "⏸"
+		if m.paused {
+			spaceLabel = "▶"
 		}
 		info := lipgloss.JoinVertical(lipgloss.Left,
 			accentStyle.Render("▶ NOW PLAYING"),
 			titleStyle.Copy().Width(m.windowWidth-50).Render(item.Title),
 			"\n", m.renderSlider(pct, m.windowWidth-50, timeStr),
 			"\n", statusLine,
-			faintStyle.Render("\n← -10s | → +30s | - Slow | + Fast | Space Pause | Esc Back"),
+			faintStyle.Render(fmt.Sprintf("\n← -10s | → +30s | Space %s | g Go To | Esc ↩", spaceLabel)),
 		)
 		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
 	}
