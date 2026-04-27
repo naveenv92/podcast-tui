@@ -63,6 +63,7 @@ type ffmpegErrMsg struct {
 type swapPayload struct {
 	prebuf []byte
 	reader io.ReadCloser
+	gen    int
 }
 
 // seekDoneMsg is returned when a background seek finishes.
@@ -361,12 +362,22 @@ func doSeek(pcm *PCMStreamer, oldCmd *exec.Cmd, audioURL string, target time.Dur
 		n, _ := io.ReadFull(stdout, prebuf)
 
 		// Drain any stale pending swap before sending ours.
+		// If the queued swap is from a newer generation, put it back and abort —
+		// our payload is already superseded and its process will be killed when
+		// seekDoneMsg is processed.
 		select {
 		case old := <-pcm.pendSwap:
+			if old.gen >= gen {
+				pcm.pendSwap <- old
+				stdout.Close()
+				cmd.Process.Kill()
+				go cmd.Wait()
+				return seekDoneMsg{cmd: nil, gen: gen}
+			}
 			old.reader.Close()
 		default:
 		}
-		pcm.pendSwap <- swapPayload{prebuf: prebuf[:n], reader: stdout}
+		pcm.pendSwap <- swapPayload{prebuf: prebuf[:n], reader: stdout, gen: gen}
 
 		// Kill the process that was playing before this seek started.
 		if oldCmd != nil {
@@ -428,8 +439,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.ffmpegCmd = msg.cmd
 			} else {
-				// Superseded by a speed change: kill the orphaned process.
-				msg.cmd.Process.Kill()
+				// Don't kill the stale process: the streamer may still be reading
+				// from its pipe. It will receive SIGPIPE and exit naturally once
+				// the streamer closes the reader during the next swap.
 				go msg.cmd.Wait()
 			}
 		}
