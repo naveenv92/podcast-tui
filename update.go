@@ -256,6 +256,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, searchPodcasts(m.textInput.Value())
 			} else if m.state == viewResults {
 				res := m.searchResults[m.cursor]
+				m.feedURL = res.FeedURL
 				return m, tea.Batch(fetchFeed(res.FeedURL), fetchAlbumArt(res.ArtworkURL))
 			} else if m.state == viewEpisodes {
 				m.state = viewPlayer
@@ -263,6 +264,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				item := m.feed.Items[m.playingIndex]
 				m.totalDuration = parseDuration(item.ITunesExt.Duration)
 				m.playingTitle = item.Title
+				m.history[episodeKey(item)] = HistoryEntry{
+					Title:      item.Title,
+					FeedURL:    m.feedURL,
+					ListenedAt: time.Now(),
+				}
+				saveHistory(m.history)
 				return m, m.playAudio(item.Enclosures[0].URL, 0)
 			}
 		}

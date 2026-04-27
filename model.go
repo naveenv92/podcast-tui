@@ -22,8 +22,10 @@ type model struct {
 	textInput        textinput.Model
 	searchResults    []SearchResult
 	feed             *gofeed.Feed
+	feedURL          string
 	cursor           int
 	albumArt         string
+	history          History
 	pcmStreamer      *PCMStreamer
 	ctrl             *beep.Ctrl
 	ffmpegCmd        *exec.Cmd
@@ -103,6 +105,7 @@ func initialModel() model {
 		goToInput:          gti,
 		episodeSearchInput: esi,
 		speed:              1.0,
+		history:            loadHistory(),
 	}
 }
 

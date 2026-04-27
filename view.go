@@ -151,10 +151,19 @@ func (m model) View() string {
 				title = string(runes[:titleColWidth-1]) + "…"
 			}
 			row := fmt.Sprintf("| %-*s | %-*s |", dateColWidth, dateStr, titleColWidth, title)
+			_, played := m.history[episodeKey(e)]
 			if m.cursor == i {
-				content += selStyle.Render("> "+row) + "\n"
+				prefix := "> "
+				if played {
+					prefix = ">✓"
+				}
+				content += selStyle.Render(prefix+row) + "\n"
 			} else {
-				content += "  " + row + "\n"
+				if played {
+					content += playedStyle.Render("✓ ") + row + "\n"
+				} else {
+					content += "  " + row + "\n"
+				}
 			}
 			rendered++
 		}
