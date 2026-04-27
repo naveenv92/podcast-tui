@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -183,6 +184,39 @@ type model struct {
 	windowWidth      int
 	windowHeight     int
 	playingTitle     string
+	playingIndex     int // feed index of the episode currently in the player
+	// episode search / filter
+	showEpisodeSearch  bool
+	episodeSearchInput textarea.Model
+	episodeFilter      string // raw query shown in UI; empty = no filter
+	filteredEpisodes   []int  // feed indices matching the filter; nil = no filter
+}
+
+// episodeCount returns the number of episodes currently displayed (filtered or all).
+func (m model) episodeCount() int {
+	if m.filteredEpisodes != nil {
+		return len(m.filteredEpisodes)
+	}
+	if m.feed != nil {
+		return len(m.feed.Items)
+	}
+	return 0
+}
+
+// episodeItemAt returns the feed item at display position i.
+func (m model) episodeItemAt(i int) *gofeed.Item {
+	if m.filteredEpisodes != nil {
+		return m.feed.Items[m.filteredEpisodes[i]]
+	}
+	return m.feed.Items[i]
+}
+
+// feedIndexAt converts a display-list index to the underlying feed index.
+func (m model) feedIndexAt(i int) int {
+	if m.filteredEpisodes != nil {
+		return m.filteredEpisodes[i]
+	}
+	return i
 }
 
 func initialModel() model {
@@ -194,11 +228,23 @@ func initialModel() model {
 	gti.Placeholder = "00:00:00"
 	gti.CharLimit = 8
 
+	esi := textarea.New()
+	esi.Prompt = ""     // must be set before SetWidth so prompt width is 0
+	esi.Placeholder = "" // avoid placeholderView(), which doesn't pad lines to width
+	esi.SetWidth(40)
+	esi.SetHeight(3)
+	esi.ShowLineNumbers = false
+	esi.CharLimit = 200
+	esi.FocusedStyle.Base = lipgloss.NewStyle()
+	esi.BlurredStyle.Base = lipgloss.NewStyle()
+	esi.FocusedStyle.CursorLine = lipgloss.NewStyle()
+
 	return model{
-		state:     viewSearch,
-		textInput: ti,
-		goToInput: gti,
-		speed:     1.0,
+		state:              viewSearch,
+		textInput:          ti,
+		goToInput:          gti,
+		episodeSearchInput: esi,
+		speed:              1.0,
 	}
 }
 
@@ -408,6 +454,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.feed = msg
 		m.state = viewEpisodes
 		m.cursor = 0
+		m.filteredEpisodes = nil
+		m.episodeFilter = ""
 	case albumArtMsg:
 		m.albumArt = string(msg)
 	case ffmpegErrMsg:
@@ -479,6 +527,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.showEpisodeSearch {
+			switch msg.String() {
+			case "esc":
+				m.showEpisodeSearch = false
+				m.episodeSearchInput.SetValue("")
+			case "enter":
+				query := strings.TrimSpace(m.episodeSearchInput.Value())
+				m.showEpisodeSearch = false
+				m.episodeSearchInput.SetValue("")
+				if query == "" {
+					m.filteredEpisodes = nil
+					m.episodeFilter = ""
+				} else {
+					m.episodeFilter = query
+					lower := strings.ToLower(query)
+					m.filteredEpisodes = []int{}
+					for i, item := range m.feed.Items {
+						if strings.Contains(strings.ToLower(item.Title), lower) {
+							m.filteredEpisodes = append(m.filteredEpisodes, i)
+						}
+					}
+				}
+				m.cursor = 0
+			default:
+				var cmd tea.Cmd
+				m.episodeSearchInput, cmd = m.episodeSearchInput.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.ffmpegCmd != nil {
@@ -486,6 +564,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "esc", "backspace":
+			if m.state == viewEpisodes && m.filteredEpisodes != nil {
+				m.filteredEpisodes = nil
+				m.episodeFilter = ""
+				m.cursor = 0
+				return m, nil
+			}
 			if m.state > viewSearch {
 				m.state--
 				return m, nil
@@ -501,7 +585,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor++
 				}
 			case viewEpisodes:
-				if m.feed != nil && m.cursor < len(m.feed.Items)-1 {
+				if m.cursor < m.episodeCount()-1 {
 					m.cursor++
 				}
 			default:
@@ -516,6 +600,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pcmStreamer != nil {
 				m.state = viewPlayer
 				return m, nil
+			}
+		case "s":
+			if m.state == viewEpisodes {
+				m.showEpisodeSearch = true
+				m.episodeSearchInput.SetValue("")
+				return m, m.episodeSearchInput.Focus()
 			}
 		case "g":
 			if m.state == viewPlayer && m.pcmStreamer != nil {
@@ -597,7 +687,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(fetchFeed(res.FeedURL), fetchAlbumArt(res.ArtworkURL))
 			} else if m.state == viewEpisodes {
 				m.state = viewPlayer
-				item := m.feed.Items[m.cursor]
+				m.playingIndex = m.feedIndexAt(m.cursor)
+				item := m.feed.Items[m.playingIndex]
 				m.totalDuration = parseDuration(item.ITunesExt.Duration)
 				m.playingTitle = item.Title
 				return m, m.playAudio(item.Enclosures[0].URL, 0)
@@ -686,6 +777,22 @@ func (m model) View() string {
 			}
 		}
 	case viewEpisodes:
+		if m.showEpisodeSearch {
+			rows := []string{
+				accentStyle.Render("Search Episodes"),
+				"",
+				m.episodeSearchInput.View(),
+				"",
+				faintStyle.Render("Enter to search · Esc to cancel"),
+			}
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
 		const visibleCount = 15
 		scrollTop := 0
 		if m.cursor >= visibleCount {
@@ -704,13 +811,37 @@ func (m model) View() string {
 		divider := fmt.Sprintf("  |%s|%s|", strings.Repeat("-", dateColWidth+2), strings.Repeat("-", titleColWidth+2))
 		emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s |", dateColWidth, "", titleColWidth, "")
 		content = titleStyle.Render("Episodes:") + "\n\n"
+		if m.episodeFilter != "" {
+			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s to search again", len(m.filteredEpisodes))
+			// "Filter: " (8) + `"` + query + `"` (2) + suffix
+			maxQueryRunes := m.windowWidth - 8 - 2 - len(suffix)
+			if maxQueryRunes < 4 {
+				maxQueryRunes = 4
+			}
+			displayQuery := m.episodeFilter
+			if runes := []rune(displayQuery); len(runes) > maxQueryRunes {
+				displayQuery = string(runes[:maxQueryRunes-1]) + "…"
+			}
+			filterLine := faintStyle.Render("Filter: ") +
+				accentStyle.Render("\""+displayQuery+"\"") +
+				faintStyle.Render(suffix)
+			content += filterLine + "\n"
+		} else {
+			content += faintStyle.Render("s to search") + "\n"
+		}
 		content += faintStyle.Render(header) + "\n"
 		content += faintStyle.Render(divider) + "\n"
 		rendered := 0
-		for i, e := range m.feed.Items {
+		count := m.episodeCount()
+		if count == 0 && m.episodeFilter != "" {
+			content += faintStyle.Render("  No episodes match your search.") + "\n"
+			rendered = visibleCount // skip empty-row padding
+		}
+		for i := 0; i < count; i++ {
 			if i < scrollTop || i >= scrollTop+visibleCount {
 				continue
 			}
+			e := m.episodeItemAt(i)
 			dateStr := strings.Repeat(" ", dateColWidth)
 			if e.PublishedParsed != nil {
 				dateStr = e.PublishedParsed.Format("Jan 02, 2006")
@@ -751,7 +882,7 @@ func (m model) View() string {
 			content = dialog
 			break
 		}
-		item := m.feed.Items[m.cursor]
+		item := m.feed.Items[m.playingIndex]
 		var pct float64
 		var cur time.Duration
 		if m.pcmStreamer != nil {
