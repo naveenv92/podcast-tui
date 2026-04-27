@@ -10,9 +10,17 @@ import (
 )
 
 type HistoryEntry struct {
-	Title      string    `json:"title"`
-	FeedURL    string    `json:"feedURL"`
-	ListenedAt time.Time `json:"listenedAt"`
+	Title      string        `json:"title"`
+	FeedURL    string        `json:"feedURL"`
+	Progress   time.Duration `json:"progress"`
+	Completed  bool          `json:"completed"`
+	ListenedAt time.Time     `json:"listenedAt"`
+}
+
+// isCompleted returns true for entries marked complete, including old entries
+// that predate the Completed field (identified by a non-zero ListenedAt).
+func (e HistoryEntry) isCompleted() bool {
+	return e.Completed || !e.ListenedAt.IsZero()
 }
 
 type History map[string]HistoryEntry

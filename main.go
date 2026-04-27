@@ -19,7 +19,8 @@ var (
 	selStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7FF")).Bold(true)
 	barStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
 	fillStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7FF"))
-	playedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#5FFF5F")).Faint(true)
+	playedStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#5FFF5F")).Faint(true)
+	inProgressStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFAF00")).Faint(true)
 )
 
 func main() {

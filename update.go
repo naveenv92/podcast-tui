@@ -67,6 +67,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tickMsg:
 		if m.pcmStreamer != nil {
+			if m.feed != nil {
+				pos := m.currentPosition()
+				item := m.feed.Items[m.playingIndex]
+				key := episodeKey(item)
+				entry := m.history[key]
+				entry.Title = item.Title
+				entry.FeedURL = m.feedURL
+				entry.Progress = pos
+				if m.totalDuration > 0 && pos >= m.totalDuration*95/100 && !entry.isCompleted() {
+					entry.Completed = true
+					entry.ListenedAt = time.Now()
+				}
+				m.history[key] = entry
+				saveHistory(m.history)
+			}
 			return m, tick()
 		}
 	case tea.KeyMsg:
@@ -264,13 +279,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				item := m.feed.Items[m.playingIndex]
 				m.totalDuration = parseDuration(item.ITunesExt.Duration)
 				m.playingTitle = item.Title
-				m.history[episodeKey(item)] = HistoryEntry{
-					Title:      item.Title,
-					FeedURL:    m.feedURL,
-					ListenedAt: time.Now(),
+				resumeFrom := time.Duration(0)
+				if entry, ok := m.history[episodeKey(item)]; ok && !entry.isCompleted() && entry.Progress > 0 {
+					resumeFrom = entry.Progress
 				}
-				saveHistory(m.history)
-				return m, m.playAudio(item.Enclosures[0].URL, 0)
+				return m, m.playAudio(item.Enclosures[0].URL, resumeFrom)
 			}
 		}
 	}
