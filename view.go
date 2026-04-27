@@ -1,0 +1,252 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// renderNowPlayingBar returns a 2-line footer with episode title and progress.
+// Returns "" when nothing is playing.
+func (m model) renderNowPlayingBar() string {
+	if m.pcmStreamer == nil || m.playingTitle == "" {
+		return ""
+	}
+
+	cur := m.currentPosition()
+	var pct float64
+	if m.totalDuration > 0 {
+		pct = float64(cur) / float64(m.totalDuration)
+	}
+	timeStr := fmt.Sprintf("%s / %s", formatDur(cur), formatDur(m.totalDuration))
+
+	playIcon := "▶"
+	if m.paused {
+		playIcon = "⏸"
+	}
+
+	toggleKey, spaceKey := "p", "space"
+	if m.state == viewSearch {
+		toggleKey, spaceKey = "ctrl+p", "ctrl+space"
+	}
+	spaceIcon := "⏸"
+	if m.paused {
+		spaceIcon = "▶"
+	}
+	hintText := fmt.Sprintf("  ·  %s to toggle  ·  %s %s", toggleKey, spaceKey, spaceIcon)
+
+	const sliderWidth = 20
+	// 2 (icon+space) + title + 2 (gap) + sliderWidth + 2 (gap) + len(timeStr) + len(hintText)
+	titleMaxWidth := m.windowWidth - 2 - sliderWidth - 2 - len(timeStr) - len(hintText) - 4
+	if titleMaxWidth < 8 {
+		titleMaxWidth = 8
+	}
+
+	title := m.playingTitle
+	runes := []rune(title)
+	if len(runes) > titleMaxWidth {
+		title = string(runes[:titleMaxWidth-1]) + "…"
+	}
+
+	pos := int(pct * float64(sliderWidth))
+	slider := fillStyle.Render(strings.Repeat("━", pos)) + barStyle.Render(strings.Repeat("─", max(0, sliderWidth-pos)))
+	hint := faintStyle.Render(hintText)
+	separator := barStyle.Render(strings.Repeat("─", m.windowWidth))
+	infoLine := accentStyle.Render(playIcon+" ") + title + "  " + slider + "  " + faintStyle.Render(timeStr) + hint
+	center := lipgloss.NewStyle().Width(m.windowWidth).Align(lipgloss.Center)
+	return separator + "\n" + center.Render(infoLine)
+}
+
+func (m model) View() string {
+	var content string
+	switch m.state {
+	case viewSearch:
+		content = fmt.Sprintf("%s\n\n%s\n\n%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"))
+	case viewResults:
+		content = titleStyle.Render("Results:") + "\n\n"
+		for i, r := range m.searchResults {
+			cursor := "  "
+			if m.cursor == i {
+				cursor = "> "
+				content += selStyle.Render(cursor+r.CollectionName) + "\n"
+			} else {
+				content += cursor + r.CollectionName + "\n"
+			}
+		}
+	case viewEpisodes:
+		if m.showEpisodeSearch {
+			rows := []string{
+				accentStyle.Render("Search Episodes"),
+				"",
+				m.episodeSearchInput.View(),
+				"",
+				faintStyle.Render("Enter to search · Esc to cancel"),
+			}
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
+		const visibleCount = 15
+		scrollTop := 0
+		if m.cursor >= visibleCount {
+			scrollTop = m.cursor - visibleCount + 1
+		}
+		const dateColWidth = 12 // "Jan 02, 2006"
+		// Row layout: cursor(2) + "| "(2) + date(12) + " | "(3) + title(N) + " |"(2) = 21+N
+		titleColWidth := m.windowWidth - 31
+		if titleColWidth < 20 {
+			titleColWidth = 20
+		}
+		if titleColWidth > 80 {
+			titleColWidth = 80
+		}
+		header := fmt.Sprintf("  | %-*s | %-*s |", dateColWidth, "Date", titleColWidth, "Episode")
+		divider := fmt.Sprintf("  |%s|%s|", strings.Repeat("-", dateColWidth+2), strings.Repeat("-", titleColWidth+2))
+		emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s |", dateColWidth, "", titleColWidth, "")
+		content = titleStyle.Render("Episodes:") + "\n\n"
+		if m.episodeFilter != "" {
+			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s to search again", len(m.filteredEpisodes))
+			// "Filter: " (8) + `"` + query + `"` (2) + suffix
+			maxQueryRunes := m.windowWidth - 8 - 2 - len(suffix)
+			if maxQueryRunes < 4 {
+				maxQueryRunes = 4
+			}
+			displayQuery := m.episodeFilter
+			if runes := []rune(displayQuery); len(runes) > maxQueryRunes {
+				displayQuery = string(runes[:maxQueryRunes-1]) + "…"
+			}
+			filterLine := faintStyle.Render("Filter: ") +
+				accentStyle.Render("\""+displayQuery+"\"") +
+				faintStyle.Render(suffix)
+			content += filterLine + "\n"
+		} else {
+			content += faintStyle.Render("s to search") + "\n"
+		}
+		content += faintStyle.Render(header) + "\n"
+		content += faintStyle.Render(divider) + "\n"
+		rendered := 0
+		count := m.episodeCount()
+		if count == 0 && m.episodeFilter != "" {
+			content += faintStyle.Render("  No episodes match your search.") + "\n"
+			rendered = visibleCount // skip empty-row padding
+		}
+		for i := 0; i < count; i++ {
+			if i < scrollTop || i >= scrollTop+visibleCount {
+				continue
+			}
+			e := m.episodeItemAt(i)
+			dateStr := strings.Repeat(" ", dateColWidth)
+			if e.PublishedParsed != nil {
+				dateStr = e.PublishedParsed.Format("Jan 02, 2006")
+			}
+			title := e.Title
+			if runes := []rune(title); len(runes) > titleColWidth {
+				title = string(runes[:titleColWidth-1]) + "…"
+			}
+			row := fmt.Sprintf("| %-*s | %-*s |", dateColWidth, dateStr, titleColWidth, title)
+			if m.cursor == i {
+				content += selStyle.Render("> "+row) + "\n"
+			} else {
+				content += "  " + row + "\n"
+			}
+			rendered++
+		}
+		for rendered < visibleCount {
+			content += emptyRow + "\n"
+			rendered++
+		}
+	case viewPlayer:
+		if m.showGoTo {
+			rows := []string{
+				accentStyle.Render("Go To Position"),
+				faintStyle.Render("MM:SS or HH:MM:SS"),
+				"",
+				m.goToInput.View(),
+			}
+			if m.goToErr != "" {
+				rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.goToErr))
+			}
+			rows = append(rows, "", faintStyle.Render("Enter confirm · Esc cancel"))
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
+		item := m.feed.Items[m.playingIndex]
+		var pct float64
+		var cur time.Duration
+		if m.pcmStreamer != nil {
+			cur = m.currentPosition()
+			if m.totalDuration > 0 {
+				pct = float64(cur) / float64(m.totalDuration)
+			}
+		}
+		timeStr := fmt.Sprintf("%s / %s", formatDur(cur), formatDur(m.totalDuration))
+
+		var statusLine string
+		if m.statusMsg != "" {
+			statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.statusMsg)
+		} else if m.paused {
+			statusLine = faintStyle.Render("- ") + accentStyle.Render("⏸  Paused") + faintStyle.Render(" +")
+		} else if m.pcmStreamer != nil && atomic.LoadInt64(&m.pcmStreamer.samplesPlayed) > 0 {
+			statusLine = faintStyle.Render("- ") + accentStyle.Render(fmt.Sprintf("%.2fx Speed", m.speed)) + faintStyle.Render(" +")
+		} else {
+			statusLine = faintStyle.Render("Loading...")
+		}
+
+		spaceLabel := "⏸"
+		if m.paused {
+			spaceLabel = "▶"
+		}
+		info := lipgloss.JoinVertical(lipgloss.Left,
+			accentStyle.Render("▶ NOW PLAYING"),
+			titleStyle.Copy().Width(m.windowWidth-50).Render(item.Title),
+			"\n", m.renderSlider(pct, m.windowWidth-50, timeStr),
+			"\n", statusLine,
+			faintStyle.Render(fmt.Sprintf("\n← -10s | → +30s | Space %s | g Go To | Esc ↩", spaceLabel)),
+		)
+		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
+	}
+	nowPlayingBar := ""
+	barHeight := 0
+	if m.state != viewPlayer {
+		nowPlayingBar = m.renderNowPlayingBar()
+		if nowPlayingBar != "" {
+			barHeight = 2
+		}
+	}
+
+	availHeight := m.windowHeight - barHeight
+	if availHeight < 1 {
+		availHeight = 1
+	}
+	mainArea := lipgloss.Place(m.windowWidth, availHeight, lipgloss.Center, lipgloss.Center, content)
+	if nowPlayingBar != "" {
+		return mainArea + "\n" + nowPlayingBar
+	}
+	return mainArea
+}
+
+func (m model) renderSlider(pct float64, width int, timeInfo string) string {
+	barWidth := width - len(timeInfo) - 5
+	if barWidth < 5 {
+		barWidth = 5
+	}
+	pos := int(pct * float64(barWidth))
+	return fmt.Sprintf("%s%s%s  %s",
+		fillStyle.Render(strings.Repeat("━", pos)),
+		lipgloss.NewStyle().Foreground(lipgloss.Color("#FFF")).Render("●"),
+		barStyle.Render(strings.Repeat("─", max(0, barWidth-pos))),
+		faintStyle.Render(timeInfo),
+	)
+}
