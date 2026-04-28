@@ -40,10 +40,7 @@ func (m model) renderNowPlayingBar() string {
 
 	const sliderWidth = 20
 	// 2 (icon+space) + title + 2 (gap) + sliderWidth + 2 (gap) + len(timeStr) + len(hintText)
-	titleMaxWidth := m.windowWidth - 2 - sliderWidth - 2 - len(timeStr) - len(hintText) - 4
-	if titleMaxWidth < 8 {
-		titleMaxWidth = 8
-	}
+	titleMaxWidth := max(m.windowWidth-2-sliderWidth-2-len(timeStr)-len(hintText)-4, 8)
 
 	title := m.playingTitle
 	runes := []rune(title)
@@ -100,10 +97,7 @@ func (m model) View() string {
 		}
 		const dateColWidth = 12 // "Jan 02, 2006"
 		// Row layout: cursor(2) + "| "(2) + date(12) + " | "(3) + title(N) + " |"(2) = 21+N
-		titleColWidth := m.windowWidth - 31
-		if titleColWidth < 20 {
-			titleColWidth = 20
-		}
+		titleColWidth := max(m.windowWidth-31, 20)
 		if titleColWidth > 80 {
 			titleColWidth = 80
 		}
@@ -114,10 +108,7 @@ func (m model) View() string {
 		if m.episodeFilter != "" {
 			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s to search again", len(m.filteredEpisodes))
 			// "Filter: " (8) + `"` + query + `"` (2) + suffix
-			maxQueryRunes := m.windowWidth - 8 - 2 - len(suffix)
-			if maxQueryRunes < 4 {
-				maxQueryRunes = 4
-			}
+			maxQueryRunes := max(m.windowWidth-8-2-len(suffix), 4)
 			displayQuery := m.episodeFilter
 			if runes := []rune(displayQuery); len(runes) > maxQueryRunes {
 				displayQuery = string(runes[:maxQueryRunes-1]) + "…"
@@ -137,7 +128,7 @@ func (m model) View() string {
 			content += faintStyle.Render("  No episodes match your search.") + "\n"
 			rendered = visibleCount // skip empty-row padding
 		}
-		for i := 0; i < count; i++ {
+		for i := range count {
 			if i < scrollTop || i >= scrollTop+visibleCount {
 				continue
 			}
@@ -241,10 +232,7 @@ func (m model) View() string {
 		}
 	}
 
-	availHeight := m.windowHeight - barHeight
-	if availHeight < 1 {
-		availHeight = 1
-	}
+	availHeight := max(m.windowHeight-barHeight, 1)
 	mainArea := lipgloss.Place(m.windowWidth, availHeight, lipgloss.Center, lipgloss.Center, content)
 	if nowPlayingBar != "" {
 		return mainArea + "\n" + nowPlayingBar
@@ -253,10 +241,7 @@ func (m model) View() string {
 }
 
 func (m model) renderSlider(pct float64, width int, timeInfo string) string {
-	barWidth := width - len(timeInfo) - 5
-	if barWidth < 5 {
-		barWidth = 5
-	}
+	barWidth := max(width-len(timeInfo)-5, 5)
 	pos := int(pct * float64(barWidth))
 	return fmt.Sprintf("%s%s%s  %s",
 		fillStyle.Render(strings.Repeat("━", pos)),

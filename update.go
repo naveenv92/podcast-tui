@@ -218,10 +218,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "left":
 			if m.pcmStreamer != nil {
-				target := m.currentPosition() - 10*time.Second
-				if target < 0 {
-					target = 0
-				}
+				target := max(m.currentPosition()-10*time.Second, 0)
 				m.seekOffset = target
 				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
 				m.seekSeq++
