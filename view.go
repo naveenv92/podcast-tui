@@ -95,18 +95,19 @@ func (m model) View() string {
 		if m.cursor >= visibleCount {
 			scrollTop = m.cursor - visibleCount + 1
 		}
-		const dateColWidth = 12 // "Jan 02, 2006"
-		// Row layout: cursor(2) + "| "(2) + date(12) + " | "(3) + title(N) + " |"(2) = 21+N
-		titleColWidth := max(m.windowWidth-31, 20)
+		const dateColWidth = 12      // "Jan 02, 2006"
+		const progressColWidth = 8   // "Progress" header, " 50%    " data
+		// Row layout: cursor(2) + "| "(2) + date(12) + " | "(3) + title(N) + " | "(3) + progress(8) + " |"(2) = 32+N
+		titleColWidth := max(m.windowWidth-42, 20)
 		if titleColWidth > 80 {
 			titleColWidth = 80
 		}
-		header := fmt.Sprintf("  | %-*s | %-*s |", dateColWidth, "Date", titleColWidth, "Episode")
-		divider := fmt.Sprintf("  |%s|%s|", strings.Repeat("-", dateColWidth+2), strings.Repeat("-", titleColWidth+2))
-		emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s |", dateColWidth, "", titleColWidth, "")
+		header := fmt.Sprintf("  | %-*s | %-*s | %-*s |", dateColWidth, "Date", titleColWidth, "Episode", progressColWidth, "Progress")
+		divider := fmt.Sprintf("  |%s|%s|%s|", strings.Repeat("-", dateColWidth+2), strings.Repeat("-", titleColWidth+2), strings.Repeat("-", progressColWidth+2))
+		emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s | %-*s |", dateColWidth, "", titleColWidth, "", progressColWidth, "")
 		content = titleStyle.Render("Episodes:") + "\n\n"
 		if m.episodeFilter != "" {
-			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s to search again", len(m.filteredEpisodes))
+			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s search · m mark · u unmark", len(m.filteredEpisodes))
 			// "Filter: " (8) + `"` + query + `"` (2) + suffix
 			maxQueryRunes := max(m.windowWidth-8-2-len(suffix), 4)
 			displayQuery := m.episodeFilter
@@ -118,7 +119,7 @@ func (m model) View() string {
 				faintStyle.Render(suffix)
 			content += filterLine + "\n"
 		} else {
-			content += faintStyle.Render("s to search") + "\n"
+			content += faintStyle.Render("s to search · m mark played · u unmark") + "\n"
 		}
 		content += faintStyle.Render(header) + "\n"
 		content += faintStyle.Render(divider) + "\n"
@@ -141,26 +142,31 @@ func (m model) View() string {
 			if runes := []rune(title); len(runes) > titleColWidth {
 				title = string(runes[:titleColWidth-1]) + "…"
 			}
-			row := fmt.Sprintf("| %-*s | %-*s |", dateColWidth, dateStr, titleColWidth, title)
 			entry, hasHistory := m.history[episodeKey(e)]
 			completed := hasHistory && entry.isCompleted()
 			inProgress := hasHistory && !completed && entry.Progress > 0
+
+			var progressStr string
+			if completed {
+				progressStr = "100%"
+			} else if inProgress && e.ITunesExt != nil {
+				total := parseDuration(e.ITunesExt.Duration)
+				if total > 0 {
+					pct := int(entry.Progress * 100 / total)
+					if pct > 99 {
+						pct = 99
+					}
+					progressStr = fmt.Sprintf("%3d%%", pct)
+				}
+			}
+
+			row := fmt.Sprintf("| %-*s | %-*s | %-*s |", dateColWidth, dateStr, titleColWidth, title, progressColWidth, progressStr)
 			if m.cursor == i {
-				prefix := "> "
-				if completed {
-					prefix = ">✓"
-				} else if inProgress {
-					prefix = ">~"
-				}
-				content += selStyle.Render(prefix+row) + "\n"
+				content += selStyle.Render("> "+row) + "\n"
+			} else if completed {
+				content += faintStyle.Render("  "+row) + "\n"
 			} else {
-				if completed {
-					content += playedStyle.Render("✓ ") + row + "\n"
-				} else if inProgress {
-					content += inProgressStyle.Render("~ ") + row + "\n"
-				} else {
-					content += "  " + row + "\n"
-				}
+				content += "  " + row + "\n"
 			}
 			rendered++
 		}

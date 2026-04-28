@@ -194,6 +194,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.episodeSearchInput.SetValue("")
 				return m, m.episodeSearchInput.Focus()
 			}
+		case "m":
+			if m.state == viewEpisodes && m.feed != nil {
+				e := m.episodeItemAt(m.cursor)
+				key := episodeKey(e)
+				entry := m.history[key]
+				entry.Title = e.Title
+				entry.FeedURL = m.feedURL
+				entry.Completed = true
+				entry.ListenedAt = time.Now()
+				m.history[key] = entry
+				saveHistory(m.history)
+			}
+		case "u":
+			if m.state == viewEpisodes && m.feed != nil {
+				e := m.episodeItemAt(m.cursor)
+				key := episodeKey(e)
+				entry := m.history[key]
+				entry.Completed = false
+				entry.ListenedAt = time.Time{}
+				entry.Progress = 0
+				m.history[key] = entry
+				saveHistory(m.history)
+			}
 		case "g":
 			if m.state == viewPlayer && m.pcmStreamer != nil {
 				m.showGoTo = true
