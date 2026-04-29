@@ -185,8 +185,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 				return m, nil
 			}
+			if m.state == viewSaved {
+				return m, nil
+			}
+			if m.state == viewEpisodes && m.fromSaved {
+				m.state = viewSaved
+				m.cursor = 0
+				m.fromSaved = false
+				return m, nil
+			}
 			if m.state > viewSearch {
 				m.state--
+				return m, nil
+			}
+			if m.state == viewSearch && msg.String() == "esc" && len(m.savedPodcasts) > 0 {
+				m.state = viewSaved
+				m.cursor = 0
 				return m, nil
 			}
 		case "up", "k":
@@ -203,17 +217,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cursor < m.episodeCount()-1 {
 					m.cursor++
 				}
+			case viewSaved:
+				if m.cursor < len(m.savedPodcasts)-1 {
+					m.cursor++
+				}
 			default:
 				m.cursor++
 			}
 		case "p":
-			if m.state != viewSearch && m.pcmStreamer != nil {
+			if m.state != viewSearch && m.state != viewSaved && m.pcmStreamer != nil {
 				m.state = viewPlayer
 				return m, nil
 			}
 		case "ctrl+p":
 			if m.pcmStreamer != nil {
 				m.state = viewPlayer
+				return m, nil
+			}
+		case "/":
+			if m.state == viewSaved {
+				m.state = viewSearch
+				m.cursor = 0
+				return m, m.textInput.Focus()
+			}
+		case "ctrl+s":
+			if m.state == viewEpisodes && m.feed != nil {
+				if _, ok := m.savedPodcasts[m.feedURL]; !ok {
+					m.savedPodcasts[m.feedURL] = SavedPodcast{
+						Title:      m.feed.Title,
+						FeedURL:    m.feedURL,
+						ArtworkURL: m.artworkURL,
+					}
+					saveSaved(m.savedPodcasts)
+				}
+				return m, nil
+			}
+		case "ctrl+u":
+			if m.state == viewEpisodes && m.feed != nil {
+				if _, ok := m.savedPodcasts[m.feedURL]; ok {
+					delete(m.savedPodcasts, m.feedURL)
+					saveSaved(m.savedPodcasts)
+					if len(m.savedPodcasts) == 0 && m.fromSaved {
+						m.fromSaved = false
+					}
+				}
 				return m, nil
 			}
 		case "s":
@@ -324,11 +371,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, pos, m.speed, m.ffmpegGeneration)
 			}
 		case "enter":
-			if m.state == viewSearch {
+			if m.state == viewSaved {
+				urls := savedSortedURLs(m.savedPodcasts)
+				if m.cursor < len(urls) {
+					url := urls[m.cursor]
+					podcast := m.savedPodcasts[url]
+					m.feedURL = url
+					m.artworkURL = podcast.ArtworkURL
+					m.fromSaved = true
+					return m, tea.Batch(fetchFeed(url), fetchAlbumArt(podcast.ArtworkURL))
+				}
+			} else if m.state == viewSearch {
 				return m, searchPodcasts(m.textInput.Value())
 			} else if m.state == viewResults {
 				res := m.searchResults[m.cursor]
 				m.feedURL = res.FeedURL
+				m.artworkURL = res.ArtworkURL
+				m.fromSaved = false
 				return m, tea.Batch(fetchFeed(res.FeedURL), fetchAlbumArt(res.ArtworkURL))
 			} else if m.state == viewEpisodes {
 				m.state = viewPlayer

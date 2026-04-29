@@ -10,6 +10,7 @@ const (
 	viewResults
 	viewEpisodes
 	viewPlayer
+	viewSaved
 )
 
 var (

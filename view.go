@@ -187,7 +187,14 @@ func (m model) View() string {
 				faintStyle.Render(suffix)
 			content += filterLine + "\n"
 		} else {
-			content += faintStyle.Render("s to search · m mark played · u unmark") + "\n"
+			_, isSaved := m.savedPodcasts[m.feedURL]
+			var saveHint string
+			if isSaved {
+				saveHint = "ctrl+u unsave podcast"
+			} else {
+				saveHint = "ctrl+s save podcast"
+			}
+			content += faintStyle.Render("s search · m mark played · u unmark · "+saveHint) + "\n"
 		}
 		content += faintStyle.Render(header) + "\n"
 		content += faintStyle.Render(divider) + "\n"
@@ -296,6 +303,18 @@ func (m model) View() string {
 			faintStyle.Render(fmt.Sprintf("\n← -10s | → +30s | Space %s | g Go To | Esc ↩", spaceLabel)),
 		)
 		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
+	case viewSaved:
+		content = titleStyle.Render("SAVED PODCASTS") + "\n\n"
+		urls := savedSortedURLs(m.savedPodcasts)
+		for i, url := range urls {
+			podcast := m.savedPodcasts[url]
+			if m.cursor == i {
+				content += selStyle.Render("> "+podcast.Title) + "\n"
+			} else {
+				content += "  " + podcast.Title + "\n"
+			}
+		}
+		content += "\n" + faintStyle.Render("enter to open · / search for new podcast")
 	}
 	nowPlayingBar := ""
 	barHeight := 0

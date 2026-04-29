@@ -52,6 +52,10 @@ type model struct {
 	episodeSearchInput textarea.Model
 	episodeFilter      string // raw query shown in UI; empty = no filter
 	filteredEpisodes   []int  // feed indices matching the filter; nil = no filter
+	// saved podcasts
+	savedPodcasts SavedPodcasts
+	fromSaved     bool   // true when viewEpisodes was reached from viewSaved
+	artworkURL    string // artwork URL of the currently loaded podcast
 }
 
 // episodeCount returns the number of episodes currently displayed (filtered or all).
@@ -105,14 +109,21 @@ func initialModel() model {
 	esi.BlurredStyle.Base = lipgloss.NewStyle()
 	esi.FocusedStyle.CursorLine = lipgloss.NewStyle()
 
+	saved := loadSaved()
+	initialState := viewSearch
+	if len(saved) > 0 {
+		initialState = viewSaved
+	}
+
 	return model{
-		state:              viewSearch,
+		state:              initialState,
 		textInput:          ti,
 		goToInput:          gti,
 		clearHistoryInput:  chi,
 		episodeSearchInput: esi,
 		speed:              1.0,
 		history:            loadHistory(),
+		savedPodcasts:      saved,
 	}
 }
 
