@@ -10,11 +10,49 @@ import (
 )
 
 type HistoryEntry struct {
-	Title      string        `json:"title"`
-	FeedURL    string        `json:"feedURL"`
-	Progress   time.Duration `json:"progress"`
-	Completed  bool          `json:"completed"`
-	ListenedAt time.Time     `json:"listenedAt"`
+	Title        string        `json:"title"`
+	FeedURL      string        `json:"feedURL"`
+	PodcastTitle string        `json:"podcastTitle"`
+	Progress     time.Duration `json:"progress"`
+	Completed    bool          `json:"completed"`
+	ListenedAt   time.Time     `json:"listenedAt"`
+}
+
+type ListeningStats struct {
+	TotalTime         time.Duration
+	MostListenedTitle string
+}
+
+func (h History) computeStats() ListeningStats {
+	var total time.Duration
+	byFeed := make(map[string]time.Duration)
+	nameFor := make(map[string]string)
+
+	for _, entry := range h {
+		total += entry.Progress
+		if entry.FeedURL != "" {
+			byFeed[entry.FeedURL] += entry.Progress
+			if entry.PodcastTitle != "" {
+				nameFor[entry.FeedURL] = entry.PodcastTitle
+			}
+		}
+	}
+
+	var topURL string
+	var topTime time.Duration
+	for feedURL, t := range byFeed {
+		if t > topTime {
+			topTime = t
+			topURL = feedURL
+		}
+	}
+
+	name := nameFor[topURL]
+	if name == "" {
+		name = topURL
+	}
+
+	return ListeningStats{TotalTime: total, MostListenedTitle: name}
 }
 
 // isCompleted returns true for entries marked complete, including old entries

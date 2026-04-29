@@ -28,6 +28,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		m.filteredEpisodes = nil
 		m.episodeFilter = ""
+		for key, entry := range m.history {
+			if entry.FeedURL == m.feedURL && entry.PodcastTitle == "" {
+				entry.PodcastTitle = msg.Title
+				m.history[key] = entry
+			}
+		}
+		saveHistory(m.history)
 	case albumArtMsg:
 		m.albumArt = string(msg)
 	case ffmpegErrMsg:
@@ -74,6 +81,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				entry := m.history[key]
 				entry.Title = item.Title
 				entry.FeedURL = m.feedURL
+				if m.feed != nil {
+					entry.PodcastTitle = m.feed.Title
+				}
 				entry.Progress = pos
 				if m.totalDuration > 0 && pos >= m.totalDuration*95/100 && !entry.isCompleted() {
 					entry.Completed = true
@@ -201,6 +211,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				entry := m.history[key]
 				entry.Title = e.Title
 				entry.FeedURL = m.feedURL
+				if m.feed != nil {
+					entry.PodcastTitle = m.feed.Title
+				}
 				entry.Completed = true
 				entry.ListenedAt = time.Now()
 				m.history[key] = entry
@@ -232,7 +245,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				speaker.Unlock()
 				return m, nil
 			}
-		case "ctrl+ ":
+		case "ctrl+k":
 			if m.state == viewSearch && m.ctrl != nil {
 				speaker.Lock()
 				m.ctrl.Paused = !m.ctrl.Paused

@@ -43,6 +43,38 @@ func parseDuration(s string) time.Duration {
 	return d
 }
 
+func formatListeningTime(d time.Duration) string {
+	totalMinutes := int(d.Minutes())
+	minutes := totalMinutes % 60
+	totalHours := totalMinutes / 60
+	hours := totalHours % 24
+	totalDays := totalHours / 24
+	days := totalDays % 365
+	years := totalDays / 365
+
+	plural := func(n int) string {
+		if n == 1 {
+			return ""
+		}
+		return "s"
+	}
+
+	var parts []string
+	if years > 0 {
+		parts = append(parts, fmt.Sprintf("%d year%s", years, plural(years)))
+	}
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%d day%s", days, plural(days)))
+	}
+	if hours > 0 {
+		parts = append(parts, fmt.Sprintf("%d hour%s", hours, plural(hours)))
+	}
+	if minutes > 0 || len(parts) == 0 {
+		parts = append(parts, fmt.Sprintf("%d minute%s", minutes, plural(minutes)))
+	}
+	return strings.Join(parts, ", ")
+}
+
 func formatDur(d time.Duration) string {
 	h, m, s := int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60
 	if h > 0 {

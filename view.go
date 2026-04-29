@@ -28,15 +28,15 @@ func (m model) renderNowPlayingBar() string {
 		playIcon = "⏸"
 	}
 
-	toggleKey, spaceKey := "p", "space"
+	toggleKey, playPauseKey := "p", "space"
 	if m.state == viewSearch {
-		toggleKey, spaceKey = "ctrl+p", "ctrl+space"
+		toggleKey, playPauseKey = "ctrl+p", "ctrl+k"
 	}
-	spaceIcon := "⏸"
+	playPauseIcon := "⏸"
 	if m.paused {
-		spaceIcon = "▶"
+		playPauseIcon = "▶"
 	}
-	hintText := fmt.Sprintf("  ·  %s to toggle  ·  %s %s", toggleKey, spaceKey, spaceIcon)
+	hintText := fmt.Sprintf("  ·  %s to toggle  ·  %s %s", toggleKey, playPauseKey, playPauseIcon)
 
 	const sliderWidth = 20
 	// 2 (icon+space) + title + 2 (gap) + sliderWidth + 2 (gap) + len(timeStr) + len(hintText)
@@ -61,7 +61,20 @@ func (m model) View() string {
 	var content string
 	switch m.state {
 	case viewSearch:
-		content = fmt.Sprintf("%s\n\n%s\n\n%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"))
+		stats := m.history.computeStats()
+		var statsBlock string
+		if stats.TotalTime > 0 {
+			podcastLine := stats.MostListenedTitle
+			maxLen := max(m.windowWidth-22, 10)
+			if runes := []rune(podcastLine); len(runes) > maxLen {
+				podcastLine = string(runes[:maxLen-1]) + "…"
+			}
+			statsBlock = "\n\n" + faintStyle.Render("─────────────────────") + "\n" +
+				accentStyle.Render("Listening Stats") + "\n\n" +
+				faintStyle.Render("Total time:       ") + formatListeningTime(stats.TotalTime) + "\n" +
+				faintStyle.Render("Most listened:    ") + podcastLine
+		}
+		content = fmt.Sprintf("%s\n\n%s\n\n%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), statsBlock)
 	case viewResults:
 		content = titleStyle.Render("Results:") + "\n\n"
 		for i, r := range m.searchResults {
