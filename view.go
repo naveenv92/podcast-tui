@@ -44,9 +44,13 @@ func (m model) renderNowPlayingBar() string {
 
 	title := m.playingTitle
 	runes := []rune(title)
-	if len(runes) > titleMaxWidth {
-		title = string(runes[:titleMaxWidth-1]) + "…"
+	if len(runes) > 50 {
+		runes = []rune(string(runes[:47]) + "...")
 	}
+	if len(runes) > titleMaxWidth {
+		runes = []rune(string(runes[:titleMaxWidth-1]) + "…")
+	}
+	title = string(runes)
 
 	pos := int(pct * float64(sliderWidth))
 	slider := fillStyle.Render(strings.Repeat("━", pos)) + barStyle.Render(strings.Repeat("─", max(0, sliderWidth-pos)))
@@ -64,15 +68,46 @@ func (m model) View() string {
 		stats := m.history.computeStats()
 		var statsBlock string
 		if stats.TotalTime > 0 {
+			const (
+				labelCW = 23 // " Most listened podcast " fits exactly
+				valueCW = 32
+			)
+			innerW := labelCW + 1 + valueCW
+
+			timeStr := formatListeningTime(stats.TotalTime)
 			podcastLine := stats.MostListenedTitle
-			maxLen := max(m.windowWidth-22, 10)
-			if runes := []rune(podcastLine); len(runes) > maxLen {
-				podcastLine = string(runes[:maxLen-1]) + "…"
+			if runes := []rune(podcastLine); len(runes) > valueCW-2 {
+				podcastLine = string(runes[:valueCW-3]) + "…"
 			}
-			statsBlock = "\n\n" + faintStyle.Render("─────────────────────") + "\n" +
-				accentStyle.Render("Listening Stats") + "\n\n" +
-				faintStyle.Render("Total time:       ") + formatListeningTime(stats.TotalTime) + "\n" +
-				faintStyle.Render("Most listened:    ") + podcastLine
+
+			pad := func(s string, n int) string {
+				r := []rune(s)
+				if len(r) >= n {
+					return string(r[:n])
+				}
+				return s + strings.Repeat(" ", n-len(r))
+			}
+			centerStr := func(s string, n int) string {
+				r := []rune(s)
+				if total := n - len(r); total > 0 {
+					left := total / 2
+					return strings.Repeat(" ", left) + s + strings.Repeat(" ", total-left)
+				}
+				return string(r[:n])
+			}
+
+			b := faintStyle
+			rows := []string{
+				b.Render("┌" + strings.Repeat("─", innerW) + "┐"),
+				b.Render("│") + accentStyle.Render(centerStr("Listening Stats", innerW)) + b.Render("│"),
+				b.Render("├" + strings.Repeat("─", labelCW) + "┬" + strings.Repeat("─", valueCW) + "┤"),
+				b.Render("│") + faintStyle.Render(pad(" Total listening time", labelCW)) + b.Render("│") + pad(" "+timeStr, valueCW) + b.Render("│"),
+				b.Render("├" + strings.Repeat("─", labelCW) + "┼" + strings.Repeat("─", valueCW) + "┤"),
+				b.Render("│") + faintStyle.Render(pad(" Most listened podcast", labelCW)) + b.Render("│") + pad(" "+podcastLine, valueCW) + b.Render("│"),
+				b.Render("└" + strings.Repeat("─", labelCW) + "┴" + strings.Repeat("─", valueCW) + "┘"),
+			}
+
+			statsBlock = "\n\n" + strings.Join(rows, "\n")
 		}
 		content = fmt.Sprintf("%s\n\n%s\n\n%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), statsBlock)
 	case viewResults:
