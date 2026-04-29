@@ -189,9 +189,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.state == viewEpisodes && m.fromSaved {
-				m.state = viewSaved
-				m.cursor = 0
 				m.fromSaved = false
+				if len(m.savedPodcasts) > 0 {
+					m.state = viewSaved
+				} else {
+					m.state = viewSearch
+				}
+				m.cursor = 0
 				return m, nil
 			}
 			if m.state > viewSearch {
@@ -257,9 +261,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if _, ok := m.savedPodcasts[m.feedURL]; ok {
 					delete(m.savedPodcasts, m.feedURL)
 					saveSaved(m.savedPodcasts)
-					if len(m.savedPodcasts) == 0 && m.fromSaved {
-						m.fromSaved = false
-					}
 				}
 				return m, nil
 			}
