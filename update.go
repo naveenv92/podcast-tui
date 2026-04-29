@@ -124,6 +124,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.showClearHistory {
+			switch msg.String() {
+			case "esc":
+				m.showClearHistory = false
+				m.clearHistoryInput.SetValue("")
+			case "enter":
+				if m.clearHistoryInput.Value() == "delete" {
+					m.history = clearHistory()
+					m.showClearHistory = false
+					m.clearHistoryInput.SetValue("")
+				}
+			default:
+				var cmd tea.Cmd
+				m.clearHistoryInput, cmd = m.clearHistoryInput.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
 		if m.showEpisodeSearch {
 			switch msg.String() {
 			case "esc":
@@ -244,6 +262,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.paused = m.ctrl.Paused
 				speaker.Unlock()
 				return m, nil
+			}
+		case "ctrl+d":
+			if m.state == viewSearch {
+				m.showClearHistory = true
+				m.clearHistoryInput.SetValue("")
+				return m, m.clearHistoryInput.Focus()
 			}
 		case "ctrl+k":
 			if m.state == viewSearch && m.ctrl != nil {

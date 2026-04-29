@@ -45,6 +45,8 @@ type model struct {
 	windowHeight     int
 	playingTitle     string
 	playingIndex     int // feed index of the episode currently in the player
+	showClearHistory   bool
+	clearHistoryInput  textinput.Model
 	// episode search / filter
 	showEpisodeSearch  bool
 	episodeSearchInput textarea.Model
@@ -88,6 +90,10 @@ func initialModel() model {
 	gti.Placeholder = "00:00:00"
 	gti.CharLimit = 8
 
+	chi := textinput.New()
+	chi.Placeholder = "delete"
+	chi.CharLimit = 6
+
 	esi := textarea.New()
 	esi.Prompt = ""    // must be set before SetWidth so prompt width is 0
 	esi.Placeholder = "" // avoid placeholderView(), which doesn't pad lines to width
@@ -103,6 +109,7 @@ func initialModel() model {
 		state:              viewSearch,
 		textInput:          ti,
 		goToInput:          gti,
+		clearHistoryInput:  chi,
 		episodeSearchInput: esi,
 		speed:              1.0,
 		history:            loadHistory(),

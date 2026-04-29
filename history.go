@@ -85,6 +85,12 @@ func saveHistory(h History) {
 	os.WriteFile(path, data, 0644)
 }
 
+func clearHistory() History {
+	h := make(History)
+	saveHistory(h)
+	return h
+}
+
 func episodeKey(item *gofeed.Item) string {
 	if item.GUID != "" {
 		return item.GUID

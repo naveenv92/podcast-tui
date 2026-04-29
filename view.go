@@ -65,6 +65,25 @@ func (m model) View() string {
 	var content string
 	switch m.state {
 	case viewSearch:
+		if m.showClearHistory {
+			rows := []string{
+				accentStyle.Render("Clear Listening History"),
+				faintStyle.Render("This cannot be undone."),
+				"",
+				`Type "delete" and press Enter to confirm.`,
+				"",
+				m.clearHistoryInput.View(),
+				"",
+				faintStyle.Render("Enter confirm · Esc cancel"),
+			}
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
 		stats := m.history.computeStats()
 		var statsBlock string
 		if stats.TotalTime > 0 {
@@ -107,7 +126,8 @@ func (m model) View() string {
 				b.Render("└" + strings.Repeat("─", labelCW) + "┴" + strings.Repeat("─", valueCW) + "┘"),
 			}
 
-			statsBlock = "\n\n" + strings.Join(rows, "\n")
+			statsBlock = "\n\n" + strings.Join(rows, "\n") +
+				"\n\n" + faintStyle.Render("ctrl+d to clear history")
 		}
 		content = fmt.Sprintf("%s\n\n%s\n\n%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), statsBlock)
 	case viewResults:
