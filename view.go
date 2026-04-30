@@ -142,6 +142,40 @@ func (m model) View() string {
 			}
 		}
 	case viewEpisodes:
+		if m.showEpisodeDesc && m.episodeCount() > 0 {
+			item := m.episodeItemAt(m.cursor)
+			start := m.episodeDescScroll
+			end := start + descVisibleLines
+			if end > len(m.episodeDescLines) {
+				end = len(m.episodeDescLines)
+			}
+			visible := make([]string, end-start)
+			copy(visible, m.episodeDescLines[start:end])
+			for len(visible) < descVisibleLines {
+				visible = append(visible, "")
+			}
+			scrollHint := ""
+			if len(m.episodeDescLines) > descVisibleLines {
+				scrollHint = fmt.Sprintf(" (%d/%d)", m.episodeDescScroll+1, len(m.episodeDescLines)-descVisibleLines+1)
+			}
+			rows := []string{
+				accentStyle.Render(item.Title),
+				faintStyle.Render(strings.Repeat("─", 60)),
+				"",
+			}
+			rows = append(rows, visible...)
+			rows = append(rows,
+				"",
+				faintStyle.Render("↑/↓ scroll"+scrollHint+" · esc close"),
+			)
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
 		if m.showEpisodeSearch {
 			rows := []string{
 				accentStyle.Render("Search Episodes"),
@@ -175,7 +209,7 @@ func (m model) View() string {
 		emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s | %-*s |", dateColWidth, "", titleColWidth, "", progressColWidth, "")
 		content = titleStyle.Render("Episodes:") + "\n\n"
 		if m.episodeFilter != "" {
-			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s search · m mark · u unmark", len(m.filteredEpisodes))
+			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s search · d description · m mark · u unmark", len(m.filteredEpisodes))
 			// "Filter: " (8) + `"` + query + `"` (2) + suffix
 			maxQueryRunes := max(m.windowWidth-8-2-len(suffix), 4)
 			displayQuery := m.episodeFilter
@@ -194,7 +228,7 @@ func (m model) View() string {
 			} else {
 				saveHint = "ctrl+s save podcast"
 			}
-			content += faintStyle.Render("s search · m mark played · u unmark · "+saveHint) + "\n"
+			content += faintStyle.Render("s search · d description · m mark played · u unmark · "+saveHint) + "\n"
 		}
 		content += faintStyle.Render(header) + "\n"
 		content += faintStyle.Render(divider) + "\n"

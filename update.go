@@ -8,6 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/gopxl/beep/speaker"
 	"github.com/mmcdole/gofeed"
 )
@@ -172,6 +173,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.showEpisodeDesc {
+			switch msg.String() {
+			case "esc":
+				m.showEpisodeDesc = false
+				m.episodeDescLines = nil
+				m.episodeDescScroll = 0
+			case "up", "k":
+				if m.episodeDescScroll > 0 {
+					m.episodeDescScroll--
+				}
+			case "down", "j":
+				maxScroll := max(len(m.episodeDescLines)-descVisibleLines, 0)
+				if m.episodeDescScroll < maxScroll {
+					m.episodeDescScroll++
+				}
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.ffmpegCmd != nil {
@@ -262,6 +281,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					delete(m.savedPodcasts, m.feedURL)
 					saveSaved(m.savedPodcasts)
 				}
+				return m, nil
+			}
+		case "d":
+			if m.state == viewEpisodes && m.feed != nil && m.episodeCount() > 0 {
+				item := m.episodeItemAt(m.cursor)
+				desc := episodeDescription(item)
+				innerWidth := max(m.windowWidth-8, 40)
+				if innerWidth > 70 {
+					innerWidth = 70
+				}
+				wrapped := lipgloss.NewStyle().Width(innerWidth).Render(desc)
+				m.episodeDescLines = strings.Split(wrapped, "\n")
+				m.episodeDescScroll = 0
+				m.showEpisodeDesc = true
 				return m, nil
 			}
 		case "s":

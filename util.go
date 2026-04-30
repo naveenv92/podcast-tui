@@ -2,10 +2,46 @@ package main
 
 import (
 	"fmt"
+	"html"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mmcdole/gofeed"
 )
+
+var (
+	htmlTagRe    = regexp.MustCompile(`<[^>]+>`)
+	htmlBlockRe  = regexp.MustCompile(`(?i)<(br\s*/?|/?(p|div|li|h[1-6]|blockquote|pre|tr))[^>]*>`)
+	multiNewline = regexp.MustCompile(`\n{3,}`)
+)
+
+func stripHTML(s string) string {
+	s = htmlBlockRe.ReplaceAllString(s, "\n")
+	s = htmlTagRe.ReplaceAllString(s, "")
+	s = html.UnescapeString(s)
+	s = multiNewline.ReplaceAllString(s, "\n\n")
+	return strings.TrimSpace(s)
+}
+
+// episodeDescription returns the best plain-text description for a feed item.
+// Priority: ITunesExt.Summary (usually plain text) → Description → Content.
+func episodeDescription(item *gofeed.Item) string {
+	if item == nil {
+		return ""
+	}
+	if item.ITunesExt != nil && strings.TrimSpace(item.ITunesExt.Summary) != "" {
+		return stripHTML(item.ITunesExt.Summary)
+	}
+	if strings.TrimSpace(item.Description) != "" {
+		return stripHTML(item.Description)
+	}
+	if strings.TrimSpace(item.Content) != "" {
+		return stripHTML(item.Content)
+	}
+	return "No description available."
+}
 
 // parseGoToTime parses "MM:SS" or "HH:MM:SS" into a duration.
 func parseGoToTime(s string) (time.Duration, error) {

@@ -11,6 +11,8 @@ const (
 	viewEpisodes
 	viewPlayer
 	viewSaved
+
+	descVisibleLines = 12
 )
 
 var (

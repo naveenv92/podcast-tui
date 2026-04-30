@@ -52,6 +52,10 @@ type model struct {
 	episodeSearchInput textarea.Model
 	episodeFilter      string // raw query shown in UI; empty = no filter
 	filteredEpisodes   []int  // feed indices matching the filter; nil = no filter
+	// episode description modal
+	showEpisodeDesc   bool
+	episodeDescLines  []string
+	episodeDescScroll int
 	// saved podcasts
 	savedPodcasts SavedPodcasts
 	fromSaved     bool   // true when viewEpisodes was reached from viewSaved
