@@ -57,9 +57,11 @@ type model struct {
 	episodeDescLines  []string
 	episodeDescScroll int
 	// saved podcasts
-	savedPodcasts SavedPodcasts
-	fromSaved     bool   // true when viewEpisodes was reached from viewSaved
-	artworkURL    string // artwork URL of the currently loaded podcast
+	savedPodcasts   SavedPodcasts
+	fromSaved       bool   // true when viewEpisodes was reached from viewSaved
+	artworkURL      string // artwork URL of the currently loaded podcast
+	newEpisodeCounts map[string]int // feedURL -> count of episodes since last open
+	newEpisodesSince time.Time      // lastOpenedAt from previous session (zero = first run)
 }
 
 // episodeCount returns the number of episodes currently displayed (filtered or all).
@@ -119,6 +121,9 @@ func initialModel() model {
 		initialState = viewSaved
 	}
 
+	meta := loadMeta()
+	saveMeta(AppMeta{LastOpenedAt: time.Now()})
+
 	return model{
 		state:              initialState,
 		textInput:          ti,
@@ -128,6 +133,8 @@ func initialModel() model {
 		speed:              1.0,
 		history:            loadHistory(),
 		savedPodcasts:      saved,
+		newEpisodeCounts:   make(map[string]int),
+		newEpisodesSince:   meta.LastOpenedAt,
 	}
 }
 

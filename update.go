@@ -13,7 +13,15 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
-func (m model) Init() tea.Cmd { return textinput.Blink }
+func (m model) Init() tea.Cmd {
+	cmds := []tea.Cmd{textinput.Blink}
+	if !m.newEpisodesSince.IsZero() && len(m.savedPodcasts) > 0 {
+		for feedURL := range m.savedPodcasts {
+			cmds = append(cmds, fetchNewEpisodeCount(feedURL, m.newEpisodesSince))
+		}
+	}
+	return tea.Batch(cmds...)
+}
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -36,6 +44,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		saveHistory(m.history)
+	case newEpisodesMsg:
+		if msg.count > 0 {
+			m.newEpisodeCounts[msg.feedURL] = msg.count
+		}
+		return m, nil
 	case albumArtMsg:
 		m.albumArt = string(msg)
 	case ffmpegErrMsg:

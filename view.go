@@ -342,10 +342,14 @@ func (m model) View() string {
 		urls := savedSortedURLs(m.savedPodcasts)
 		for i, url := range urls {
 			podcast := m.savedPodcasts[url]
+			suffix := ""
+			if count := m.newEpisodeCounts[url]; count > 0 {
+				suffix = " " + faintStyle.Render(fmt.Sprintf("(%d new)", count))
+			}
 			if m.cursor == i {
-				content += selStyle.Render("> "+podcast.Title) + "\n"
+				content += selStyle.Render("> "+podcast.Title) + suffix + "\n"
 			} else {
-				content += "  " + podcast.Title + "\n"
+				content += "  " + podcast.Title + suffix + "\n"
 			}
 		}
 		content += "\n" + faintStyle.Render("enter to open · / search for new podcast")

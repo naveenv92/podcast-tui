@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -38,11 +39,33 @@ func searchPodcasts(query string) tea.Cmd {
 	}
 }
 
+type newEpisodesMsg struct {
+	feedURL string
+	count   int
+}
+
 func fetchFeed(url string) tea.Cmd {
 	return func() tea.Msg {
 		fp := gofeed.NewParser()
 		feed, _ := fp.ParseURL(url)
 		return feed
+	}
+}
+
+func fetchNewEpisodeCount(feedURL string, since time.Time) tea.Cmd {
+	return func() tea.Msg {
+		fp := gofeed.NewParser()
+		feed, err := fp.ParseURL(feedURL)
+		if err != nil || feed == nil {
+			return newEpisodesMsg{feedURL: feedURL, count: 0}
+		}
+		count := 0
+		for _, item := range feed.Items {
+			if item.PublishedParsed != nil && item.PublishedParsed.After(since) {
+				count++
+			}
+		}
+		return newEpisodesMsg{feedURL: feedURL, count: count}
 	}
 }
 
