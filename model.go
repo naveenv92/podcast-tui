@@ -35,6 +35,7 @@ type model struct {
 	speed            float64
 	paused           bool
 	statusMsg        string
+	exportMsg        string
 	ffmpegGeneration int
 	seekPending      bool // true while a background seek is in-flight
 	seekSeq          int  // incremented on each keypress to expire stale debounce timers

@@ -55,6 +55,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.generation == m.ffmpegGeneration && msg.text != "" {
 			m.statusMsg = "ffmpeg: " + msg.text
 		}
+	case exportDoneMsg:
+		if msg.err != nil {
+			m.exportMsg = "Export failed: " + msg.err.Error()
+		} else {
+			m.exportMsg = "Exported to " + msg.filename
+		}
+		return m, nil
 	case seekTimerMsg:
 		if msg.seq == m.seekSeq && m.pcmStreamer != nil {
 			if m.seekPending {
@@ -109,6 +116,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tick()
 		}
 	case tea.KeyMsg:
+		m.exportMsg = ""
 		if m.showGoTo {
 			switch msg.String() {
 			case "esc":
@@ -295,6 +303,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					saveSaved(m.savedPodcasts)
 				}
 				return m, nil
+			}
+		case "ctrl+e":
+			if m.state == viewSearch || m.state == viewSaved {
+				return m, exportData(m.savedPodcasts, m.history)
 			}
 		case "d":
 			if m.state == viewEpisodes && m.feed != nil && m.episodeCount() > 0 {

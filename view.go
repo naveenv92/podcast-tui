@@ -129,7 +129,11 @@ func (m model) View() string {
 			statsBlock = "\n\n" + strings.Join(rows, "\n") +
 				"\n\n" + faintStyle.Render("ctrl+d to clear history")
 		}
-		content = fmt.Sprintf("%s\n\n%s\n\n%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), statsBlock)
+		exportLine := ""
+		if m.exportMsg != "" {
+			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
+		}
+		content = fmt.Sprintf("%s\n\n%s\n\n%s%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter · ctrl+e to export"), statsBlock, exportLine)
 	case viewResults:
 		content = titleStyle.Render("Results:") + "\n\n"
 		for i, r := range m.searchResults {
@@ -352,7 +356,11 @@ func (m model) View() string {
 				content += "  " + podcast.Title + suffix + "\n"
 			}
 		}
-		content += "\n" + faintStyle.Render("enter to open · / search for new podcast")
+		exportLine := ""
+		if m.exportMsg != "" {
+			exportLine = "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
+		}
+		content += "\n" + faintStyle.Render("enter to open · / search · ctrl+e export") + exportLine
 	}
 	nowPlayingBar := ""
 	barHeight := 0
