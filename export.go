@@ -1,96 +1,111 @@
 package main
 
 import (
+	"encoding/csv"
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 type exportDoneMsg struct {
-	filename string
-	err      error
+	filenames []string
+	err       error
 }
 
 func exportData(saved SavedPodcasts, history History) tea.Cmd {
 	return func() tea.Msg {
-		filename := "podcast-tui-export-" + time.Now().Format("2006-01-02") + ".md"
-		content := buildMarkdown(saved, history)
-		if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+		date := time.Now().Format("2006-01-02")
+		histFile := "podcast-tui-history-" + date + ".csv"
+		savedFile := "podcast-tui-saved-" + date + ".csv"
+
+		if err := writeHistoryCSV(histFile, history); err != nil {
 			return exportDoneMsg{err: err}
 		}
-		return exportDoneMsg{filename: filename}
+		if err := writeSavedCSV(savedFile, saved); err != nil {
+			return exportDoneMsg{err: err}
+		}
+		return exportDoneMsg{filenames: []string{histFile, savedFile}}
 	}
 }
 
-func buildMarkdown(saved SavedPodcasts, history History) string {
-	var sb strings.Builder
-
-	sb.WriteString("# Podcast TUI Export\n\n")
-	sb.WriteString("_Generated: " + time.Now().Format("January 2, 2006 at 3:04 PM") + "_\n\n")
-	sb.WriteString("---\n\n")
-
-	sb.WriteString("## Saved Podcasts\n\n")
-	if len(saved) == 0 {
-		sb.WriteString("_No saved podcasts._\n\n")
-	} else {
-		for _, url := range savedSortedURLs(saved) {
-			p := saved[url]
-			sb.WriteString("### " + p.Title + "\n\n")
-			sb.WriteString("- **Feed URL:** " + p.FeedURL + "\n")
-			if p.ArtworkURL != "" {
-				sb.WriteString("- **Artwork:** " + p.ArtworkURL + "\n")
-			}
-			sb.WriteString("\n")
-		}
+func writeHistoryCSV(filename string, history History) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
 	}
+	defer f.Close()
 
-	sb.WriteString("---\n\n")
+	w := csv.NewWriter(f)
+	w.Write([]string{"Episode", "Podcast", "Status", "Progress", "Last Listened", "Feed URL"})
 
-	sb.WriteString("## Listening History\n\n")
-	if len(history) == 0 {
-		sb.WriteString("_No listening history._\n\n")
-	} else {
-		entries := make([]HistoryEntry, 0, len(history))
-		for _, e := range history {
-			entries = append(entries, e)
+	entries := make([]HistoryEntry, 0, len(history))
+	for _, e := range history {
+		entries = append(entries, e)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		ti, tj := entries[i].ListenedAt, entries[j].ListenedAt
+		if ti.IsZero() && tj.IsZero() {
+			return entries[i].Title < entries[j].Title
 		}
-		sort.Slice(entries, func(i, j int) bool {
-			ti, tj := entries[i].ListenedAt, entries[j].ListenedAt
-			if ti.IsZero() && tj.IsZero() {
-				return entries[i].Title < entries[j].Title
-			}
-			if ti.IsZero() {
-				return false
-			}
-			if tj.IsZero() {
-				return true
-			}
-			return ti.After(tj)
+		if ti.IsZero() {
+			return false
+		}
+		if tj.IsZero() {
+			return true
+		}
+		return ti.After(tj)
+	})
+
+	for _, e := range entries {
+		status := "In Progress"
+		if e.isCompleted() {
+			status = "Completed"
+		}
+		listenedAt := ""
+		if !e.ListenedAt.IsZero() {
+			listenedAt = e.ListenedAt.Format("2006-01-02 15:04:05")
+		}
+		w.Write([]string{
+			e.Title,
+			e.PodcastTitle,
+			status,
+			formatExportDuration(e.Progress),
+			listenedAt,
+			e.FeedURL,
 		})
-		for _, e := range entries {
-			sb.WriteString("### " + e.Title + "\n\n")
-			sb.WriteString("- **Podcast:** " + e.PodcastTitle + "\n")
-			sb.WriteString("- **Progress:** " + formatExportDuration(e.Progress) + "\n")
-			if e.Completed {
-				sb.WriteString("- **Status:** Completed\n")
-			} else {
-				sb.WriteString("- **Status:** In Progress\n")
-			}
-			if !e.ListenedAt.IsZero() {
-				sb.WriteString("- **Last listened:** " + e.ListenedAt.Format("January 2, 2006 at 3:04 PM") + "\n")
-			}
-			if e.FeedURL != "" {
-				sb.WriteString("- **Feed URL:** " + e.FeedURL + "\n")
-			}
-			sb.WriteString("\n")
-		}
 	}
 
-	return sb.String()
+	w.Flush()
+	return w.Error()
+}
+
+func writeSavedCSV(filename string, saved SavedPodcasts) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	w := csv.NewWriter(f)
+	w.Write([]string{"Title", "Feed URL", "Artwork URL", "Categories"})
+
+	for _, url := range savedSortedURLs(saved) {
+		p := saved[url]
+		categories := ""
+		for i, c := range p.Categories {
+			if i > 0 {
+				categories += "; "
+			}
+			categories += c
+		}
+		w.Write([]string{p.Title, p.FeedURL, p.ArtworkURL, categories})
+	}
+
+	w.Flush()
+	return w.Error()
 }
 
 func formatExportDuration(d time.Duration) string {

@@ -64,7 +64,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.exportMsg = "Export failed: " + msg.err.Error()
 		} else {
-			m.exportMsg = "Exported to " + msg.filename
+			m.exportMsg = "Exported: " + strings.Join(msg.filenames, ", ")
 		}
 		return m, nil
 	case seekTimerMsg:
