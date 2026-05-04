@@ -84,51 +84,7 @@ func (m model) View() string {
 			content = dialog
 			break
 		}
-		stats := m.history.computeStats()
-		var statsBlock string
-		if stats.TotalTime > 0 {
-			const (
-				labelCW = 23 // " Most listened podcast " fits exactly
-				valueCW = 32
-			)
-			innerW := labelCW + 1 + valueCW
-
-			timeStr := formatListeningTime(stats.TotalTime)
-			podcastLine := stats.MostListenedTitle
-			if runes := []rune(podcastLine); len(runes) > valueCW-2 {
-				podcastLine = string(runes[:valueCW-3]) + "…"
-			}
-
-			pad := func(s string, n int) string {
-				r := []rune(s)
-				if len(r) >= n {
-					return string(r[:n])
-				}
-				return s + strings.Repeat(" ", n-len(r))
-			}
-			centerStr := func(s string, n int) string {
-				r := []rune(s)
-				if total := n - len(r); total > 0 {
-					left := total / 2
-					return strings.Repeat(" ", left) + s + strings.Repeat(" ", total-left)
-				}
-				return string(r[:n])
-			}
-
-			b := faintStyle
-			rows := []string{
-				b.Render("┌" + strings.Repeat("─", innerW) + "┐"),
-				b.Render("│") + accentStyle.Render(centerStr("Listening Stats", innerW)) + b.Render("│"),
-				b.Render("├" + strings.Repeat("─", labelCW) + "┬" + strings.Repeat("─", valueCW) + "┤"),
-				b.Render("│") + faintStyle.Render(pad(" Total listening time", labelCW)) + b.Render("│") + pad(" "+timeStr, valueCW) + b.Render("│"),
-				b.Render("├" + strings.Repeat("─", labelCW) + "┼" + strings.Repeat("─", valueCW) + "┤"),
-				b.Render("│") + faintStyle.Render(pad(" Most listened podcast", labelCW)) + b.Render("│") + pad(" "+podcastLine, valueCW) + b.Render("│"),
-				b.Render("└" + strings.Repeat("─", labelCW) + "┴" + strings.Repeat("─", valueCW) + "┘"),
-			}
-
-			statsBlock = "\n\n" + strings.Join(rows, "\n") +
-				"\n\n" + faintStyle.Render("ctrl+d to clear history")
-		}
+		statsBlock := m.renderStatsBlock()
 		exportLine := ""
 		if m.exportMsg != "" {
 			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
@@ -372,18 +328,19 @@ func (m model) View() string {
 				content += "  " + podcast.Title + suffix + "\n"
 			}
 		}
+		statsBlock := m.renderStatsBlock()
 		exportLine := ""
 		if m.exportMsg != "" {
-			exportLine = "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
+			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
 		}
 		if m.savedFilter != "" {
 			filterLine := faintStyle.Render("Filter: ") +
 				accentStyle.Render(`"`+m.savedFilter+`"`) +
 				faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
 			content += "\n" + filterLine + "\n"
-			content += faintStyle.Render("enter to open · s search saved · ctrl+e export") + exportLine
+			content += faintStyle.Render("enter to open · s search saved · ctrl+e export") + statsBlock + exportLine
 		} else {
-			content += "\n" + faintStyle.Render("enter to open · s search saved · / new search · ctrl+e export") + exportLine
+			content += "\n" + faintStyle.Render("enter to open · s search saved · / new search · ctrl+e export") + statsBlock + exportLine
 		}
 	}
 	nowPlayingBar := ""
@@ -407,6 +364,53 @@ func (m model) View() string {
 		return mainArea + "\n" + nowPlayingBar + "\n" + quitHint
 	}
 	return mainArea + "\n" + quitHint
+}
+
+func (m model) renderStatsBlock() string {
+	stats := m.history.computeStats()
+	if stats.TotalTime == 0 {
+		return ""
+	}
+	const (
+		labelCW = 23
+		valueCW = 32
+	)
+	innerW := labelCW + 1 + valueCW
+
+	timeStr := formatListeningTime(stats.TotalTime)
+	podcastLine := stats.MostListenedTitle
+	if runes := []rune(podcastLine); len(runes) > valueCW-2 {
+		podcastLine = string(runes[:valueCW-3]) + "…"
+	}
+
+	pad := func(s string, n int) string {
+		r := []rune(s)
+		if len(r) >= n {
+			return string(r[:n])
+		}
+		return s + strings.Repeat(" ", n-len(r))
+	}
+	centerStr := func(s string, n int) string {
+		r := []rune(s)
+		if total := n - len(r); total > 0 {
+			left := total / 2
+			return strings.Repeat(" ", left) + s + strings.Repeat(" ", total-left)
+		}
+		return string(r[:n])
+	}
+
+	b := faintStyle
+	rows := []string{
+		b.Render("┌" + strings.Repeat("─", innerW) + "┐"),
+		b.Render("│") + accentStyle.Render(centerStr("Listening Stats", innerW)) + b.Render("│"),
+		b.Render("├" + strings.Repeat("─", labelCW) + "┬" + strings.Repeat("─", valueCW) + "┤"),
+		b.Render("│") + faintStyle.Render(pad(" Total listening time", labelCW)) + b.Render("│") + pad(" "+timeStr, valueCW) + b.Render("│"),
+		b.Render("├" + strings.Repeat("─", labelCW) + "┼" + strings.Repeat("─", valueCW) + "┤"),
+		b.Render("│") + faintStyle.Render(pad(" Most listened podcast", labelCW)) + b.Render("│") + pad(" "+podcastLine, valueCW) + b.Render("│"),
+		b.Render("└" + strings.Repeat("─", labelCW) + "┴" + strings.Repeat("─", valueCW) + "┘"),
+	}
+
+	return "\n\n" + strings.Join(rows, "\n") + "\n\n" + faintStyle.Render("ctrl+d to clear history")
 }
 
 func (m model) renderSlider(pct float64, width int, timeInfo string) string {
