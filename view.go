@@ -213,7 +213,7 @@ func (m model) View() string {
 		emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s | %-*s |", dateColWidth, "", titleColWidth, "", progressColWidth, "")
 		content = titleStyle.Render("Episodes:") + "\n\n"
 		if m.episodeFilter != "" {
-			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s search · d description · m mark · u unmark", len(m.filteredEpisodes))
+			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s search saved · d description · m mark · u unmark", len(m.filteredEpisodes))
 			// "Filter: " (8) + `"` + query + `"` (2) + suffix
 			maxQueryRunes := max(m.windowWidth-8-2-len(suffix), 4)
 			displayQuery := m.episodeFilter
@@ -232,9 +232,9 @@ func (m model) View() string {
 			} else {
 				saveHint = "ctrl+s save podcast"
 			}
-			content += faintStyle.Render("s search · d description · m mark played · u unmark · "+saveHint) + "\n"
+			content += faintStyle.Render("s search saved · d description · m mark played · u unmark · "+saveHint) + "\n"
 		}
-		content += faintStyle.Render(header) + "\n"
+		content += "\n" + faintStyle.Render(header) + "\n"
 		content += faintStyle.Render(divider) + "\n"
 		rendered := 0
 		count := m.episodeCount()
@@ -381,26 +381,32 @@ func (m model) View() string {
 				accentStyle.Render(`"`+m.savedFilter+`"`) +
 				faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
 			content += "\n" + filterLine + "\n"
-			content += faintStyle.Render("enter to open · s search · ctrl+e export") + exportLine
+			content += faintStyle.Render("enter to open · s search saved · ctrl+e export") + exportLine
 		} else {
-			content += "\n" + faintStyle.Render("enter to open · s search · / new search · ctrl+e export") + exportLine
+			content += "\n" + faintStyle.Render("enter to open · s search saved · / new search · ctrl+e export") + exportLine
 		}
 	}
 	nowPlayingBar := ""
-	barHeight := 0
+	barHeight := 1 // always reserve 1 line for the quit hint
 	if m.state != viewPlayer {
 		nowPlayingBar = m.renderNowPlayingBar()
 		if nowPlayingBar != "" {
-			barHeight = 2
+			barHeight += 2
 		}
 	}
 
+	hintText := "q to quit"
+	if m.state == viewResults || m.state == viewEpisodes || m.state == viewPlayer ||
+		(m.state == viewSearch && len(m.savedPodcasts) > 0) {
+		hintText = "esc to go back  ·  q to quit"
+	}
+	quitHint := lipgloss.NewStyle().Width(m.windowWidth).Align(lipgloss.Center).Render(faintStyle.Render(hintText))
 	availHeight := max(m.windowHeight-barHeight, 1)
 	mainArea := lipgloss.Place(m.windowWidth, availHeight, lipgloss.Center, lipgloss.Center, content)
 	if nowPlayingBar != "" {
-		return mainArea + "\n" + nowPlayingBar
+		return mainArea + "\n" + nowPlayingBar + "\n" + quitHint
 	}
-	return mainArea
+	return mainArea + "\n" + quitHint
 }
 
 func (m model) renderSlider(pct float64, width int, timeInfo string) string {
