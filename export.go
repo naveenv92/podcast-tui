@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -16,11 +17,24 @@ type exportDoneMsg struct {
 	err       error
 }
 
+func exportDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "."
+	}
+	downloads := filepath.Join(home, "Downloads")
+	if info, err := os.Stat(downloads); err == nil && info.IsDir() {
+		return downloads
+	}
+	return home
+}
+
 func exportData(saved SavedPodcasts, history History) tea.Cmd {
 	return func() tea.Msg {
+		dir := exportDir()
 		date := time.Now().Format("2006-01-02")
-		histFile := "podcast-tui-history-" + date + ".csv"
-		savedFile := "podcast-tui-saved-" + date + ".csv"
+		histFile := filepath.Join(dir, "podcast-tui-history-"+date+".csv")
+		savedFile := filepath.Join(dir, "podcast-tui-saved-"+date+".csv")
 
 		if err := writeHistoryCSV(histFile, history); err != nil {
 			return exportDoneMsg{err: err}
