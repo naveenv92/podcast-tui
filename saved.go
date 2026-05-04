@@ -8,9 +8,10 @@ import (
 )
 
 type SavedPodcast struct {
-	Title      string `json:"title"`
-	FeedURL    string `json:"feedURL"`
-	ArtworkURL string `json:"artworkURL"`
+	Title      string   `json:"title"`
+	FeedURL    string   `json:"feedURL"`
+	ArtworkURL string   `json:"artworkURL"`
+	Categories []string `json:"categories,omitempty"`
 }
 
 type SavedPodcasts map[string]SavedPodcast

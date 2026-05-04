@@ -37,6 +37,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 		m.filteredEpisodes = nil
 		m.episodeFilter = ""
+		if p, ok := m.savedPodcasts[m.feedURL]; ok && len(p.Categories) == 0 {
+			p.Categories = feedCategories(msg)
+			m.savedPodcasts[m.feedURL] = p
+			saveSaved(m.savedPodcasts)
+		}
 		for key, entry := range m.history {
 			if entry.FeedURL == m.feedURL && entry.PodcastTitle == "" {
 				entry.PodcastTitle = msg.Title
@@ -178,18 +183,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.episodeFilter = ""
 				} else {
 					m.episodeFilter = query
-					lower := strings.ToLower(query)
-					m.filteredEpisodes = []int{}
-					for i, item := range m.feed.Items {
-						if strings.Contains(strings.ToLower(item.Title), lower) {
-							m.filteredEpisodes = append(m.filteredEpisodes, i)
-						}
-					}
+					m.filteredEpisodes = fuzzyFilterEpisodes(m.feed, query)
 				}
 				m.cursor = 0
 			default:
 				var cmd tea.Cmd
 				m.episodeSearchInput, cmd = m.episodeSearchInput.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
+		if m.showSavedSearch {
+			switch msg.String() {
+			case "esc":
+				m.showSavedSearch = false
+				m.savedSearchInput.SetValue("")
+			case "enter":
+				query := strings.TrimSpace(m.savedSearchInput.Value())
+				m.showSavedSearch = false
+				m.savedSearchInput.SetValue("")
+				if query == "" {
+					m.filteredSaved = nil
+					m.savedFilter = ""
+				} else {
+					m.savedFilter = query
+					m.filteredSaved = fuzzyFilterSaved(m.savedPodcasts, query)
+				}
+				m.cursor = 0
+			default:
+				var cmd tea.Cmd
+				m.savedSearchInput, cmd = m.savedSearchInput.Update(msg)
 				return m, cmd
 			}
 			return m, nil
@@ -222,6 +245,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state == viewEpisodes && m.filteredEpisodes != nil {
 				m.filteredEpisodes = nil
 				m.episodeFilter = ""
+				m.cursor = 0
+				return m, nil
+			}
+			if m.state == viewSaved && m.filteredSaved != nil {
+				m.filteredSaved = nil
+				m.savedFilter = ""
 				m.cursor = 0
 				return m, nil
 			}
@@ -262,7 +291,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor++
 				}
 			case viewSaved:
-				if m.cursor < len(m.savedPodcasts)-1 {
+				if m.cursor < len(m.savedDisplayURLs())-1 {
 					m.cursor++
 				}
 			default:
@@ -291,6 +320,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						Title:      m.feed.Title,
 						FeedURL:    m.feedURL,
 						ArtworkURL: m.artworkURL,
+						Categories: feedCategories(m.feed),
 					}
 					saveSaved(m.savedPodcasts)
 				}
@@ -327,6 +357,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showEpisodeSearch = true
 				m.episodeSearchInput.SetValue("")
 				return m, m.episodeSearchInput.Focus()
+			} else if m.state == viewSaved {
+				m.showSavedSearch = true
+				m.savedSearchInput.SetValue("")
+				return m, m.savedSearchInput.Focus()
 			}
 		case "m":
 			if m.state == viewEpisodes && m.feed != nil {
@@ -431,7 +465,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.state == viewSaved {
-				urls := savedSortedURLs(m.savedPodcasts)
+				urls := m.savedDisplayURLs()
 				if m.cursor < len(urls) {
 					url := urls[m.cursor]
 					podcast := m.savedPodcasts[url]

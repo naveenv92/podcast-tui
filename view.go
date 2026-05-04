@@ -342,8 +342,24 @@ func (m model) View() string {
 		)
 		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
 	case viewSaved:
+		if m.showSavedSearch {
+			rows := []string{
+				accentStyle.Render("Search Saved Podcasts"),
+				"",
+				m.savedSearchInput.View(),
+				"",
+				faintStyle.Render("Enter to search · Esc to cancel"),
+			}
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
 		content = titleStyle.Render("SAVED PODCASTS") + "\n\n"
-		urls := savedSortedURLs(m.savedPodcasts)
+		urls := m.savedDisplayURLs()
 		for i, url := range urls {
 			podcast := m.savedPodcasts[url]
 			suffix := ""
@@ -360,7 +376,15 @@ func (m model) View() string {
 		if m.exportMsg != "" {
 			exportLine = "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
 		}
-		content += "\n" + faintStyle.Render("enter to open · / search · ctrl+e export") + exportLine
+		if m.savedFilter != "" {
+			filterLine := faintStyle.Render("Filter: ") +
+				accentStyle.Render(`"`+m.savedFilter+`"`) +
+				faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
+			content += "\n" + filterLine + "\n"
+			content += faintStyle.Render("enter to open · s search · ctrl+e export") + exportLine
+		} else {
+			content += "\n" + faintStyle.Render("enter to open · s search · / new search · ctrl+e export") + exportLine
+		}
 	}
 	nowPlayingBar := ""
 	barHeight := 0

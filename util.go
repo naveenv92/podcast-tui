@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	"github.com/sahilm/fuzzy"
 )
 
 var (
@@ -117,4 +118,70 @@ func formatDur(d time.Duration) string {
 		return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
 	}
 	return fmt.Sprintf("%02d:%02d", m, s)
+}
+
+// fuzzyFilterEpisodes returns feed indices of items whose title fuzzy-matches
+// query, ordered by match score (best first).
+func fuzzyFilterEpisodes(feed *gofeed.Feed, query string) []int {
+	titles := make([]string, len(feed.Items))
+	for i, item := range feed.Items {
+		titles[i] = item.Title
+	}
+	matches := fuzzy.Find(query, titles)
+	indices := make([]int, len(matches))
+	for i, m := range matches {
+		indices[i] = m.Index
+	}
+	return indices
+}
+
+// feedCategories extracts deduplicated category/genre strings from a feed's
+// iTunes extension and standard RSS categories.
+func feedCategories(feed *gofeed.Feed) []string {
+	seen := map[string]bool{}
+	var cats []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s != "" && !seen[s] {
+			seen[s] = true
+			cats = append(cats, s)
+		}
+	}
+	if feed.ITunesExt != nil {
+		for _, cat := range feed.ITunesExt.Categories {
+			if cat == nil {
+				continue
+			}
+			add(cat.Text)
+			if cat.Subcategory != nil {
+				add(cat.Subcategory.Text)
+			}
+		}
+		for _, kw := range strings.Split(feed.ITunesExt.Keywords, ",") {
+			add(kw)
+		}
+	}
+	for _, c := range feed.Categories {
+		add(c)
+	}
+	return cats
+}
+
+// fuzzyFilterSaved returns the feed URLs of saved podcasts whose title or
+// categories fuzzy-match query, ordered by match score (best first).
+func fuzzyFilterSaved(saved SavedPodcasts, query string) []string {
+	urls := savedSortedURLs(saved)
+	corpus := make([]string, len(urls))
+	for i, url := range urls {
+		p := saved[url]
+		parts := []string{p.Title}
+		parts = append(parts, p.Categories...)
+		corpus[i] = strings.Join(parts, " ")
+	}
+	matches := fuzzy.Find(query, corpus)
+	result := make([]string, len(matches))
+	for i, m := range matches {
+		result[i] = urls[m.Index]
+	}
+	return result
 }

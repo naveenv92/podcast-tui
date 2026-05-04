@@ -53,6 +53,11 @@ type model struct {
 	episodeSearchInput textarea.Model
 	episodeFilter      string // raw query shown in UI; empty = no filter
 	filteredEpisodes   []int  // feed indices matching the filter; nil = no filter
+	// saved podcast filter
+	showSavedSearch  bool
+	savedSearchInput textinput.Model
+	savedFilter      string   // raw query; empty = no filter
+	filteredSaved    []string // feed URLs matching the filter; nil = no filter
 	// episode description modal
 	showEpisodeDesc   bool
 	episodeDescLines  []string
@@ -84,6 +89,15 @@ func (m model) episodeItemAt(i int) *gofeed.Item {
 	return m.feed.Items[i]
 }
 
+// savedDisplayURLs returns the ordered feed URLs for the saved podcast list,
+// respecting any active filter.
+func (m model) savedDisplayURLs() []string {
+	if m.filteredSaved != nil {
+		return m.filteredSaved
+	}
+	return savedSortedURLs(m.savedPodcasts)
+}
+
 // feedIndexAt converts a display-list index to the underlying feed index.
 func (m model) feedIndexAt(i int) int {
 	if m.filteredEpisodes != nil {
@@ -104,6 +118,10 @@ func initialModel() model {
 	chi := textinput.New()
 	chi.Placeholder = "delete"
 	chi.CharLimit = 6
+
+	ssi := textinput.New()
+	ssi.Placeholder = "Search by title or genre..."
+	ssi.CharLimit = 100
 
 	esi := textarea.New()
 	esi.Prompt = ""    // must be set before SetWidth so prompt width is 0
@@ -131,6 +149,7 @@ func initialModel() model {
 		goToInput:          gti,
 		clearHistoryInput:  chi,
 		episodeSearchInput: esi,
+		savedSearchInput:   ssi,
 		speed:              1.0,
 		history:            loadHistory(),
 		savedPodcasts:      saved,
