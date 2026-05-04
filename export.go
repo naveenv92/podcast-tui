@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -39,7 +40,7 @@ func writeHistoryCSV(filename string, history History) error {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
-	w.Write([]string{"Episode", "Podcast", "Status", "Progress", "Last Listened", "Feed URL"})
+	w.Write([]string{"Episode", "Podcast", "Status", "Progress (seconds)", "Last Listened", "Feed URL"})
 
 	entries := make([]HistoryEntry, 0, len(history))
 	for _, e := range history {
@@ -72,7 +73,7 @@ func writeHistoryCSV(filename string, history History) error {
 			e.Title,
 			e.PodcastTitle,
 			status,
-			formatExportDuration(e.Progress),
+			fmt.Sprintf("%d", int(e.Progress.Seconds())),
 			listenedAt,
 			e.FeedURL,
 		})
@@ -94,13 +95,7 @@ func writeSavedCSV(filename string, saved SavedPodcasts) error {
 
 	for _, url := range savedSortedURLs(saved) {
 		p := saved[url]
-		categories := ""
-		for i, c := range p.Categories {
-			if i > 0 {
-				categories += "; "
-			}
-			categories += c
-		}
+		categories := strings.Join(p.Categories, "|")
 		w.Write([]string{p.Title, p.FeedURL, p.ArtworkURL, categories})
 	}
 
@@ -108,15 +103,3 @@ func writeSavedCSV(filename string, saved SavedPodcasts) error {
 	return w.Error()
 }
 
-func formatExportDuration(d time.Duration) string {
-	if d <= 0 {
-		return "0m 0s"
-	}
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	s := int(d.Seconds()) % 60
-	if h > 0 {
-		return fmt.Sprintf("%dh %dm %ds", h, m, s)
-	}
-	return fmt.Sprintf("%dm %ds", m, s)
-}
