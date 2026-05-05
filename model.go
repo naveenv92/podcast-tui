@@ -68,6 +68,12 @@ type model struct {
 	artworkURL      string // artwork URL of the currently loaded podcast
 	newEpisodeCounts map[string]int // feedURL -> count of episodes since last open
 	newEpisodesSince time.Time      // lastOpenedAt from previous session (zero = first run)
+	// import
+	showImport         bool
+	importHistoryInput textinput.Model
+	importSavedInput   textinput.Model
+	importFocused      int
+	importMsg          string
 }
 
 // episodeCount returns the number of episodes currently displayed (filtered or all).
@@ -123,6 +129,14 @@ func initialModel() model {
 	ssi.Placeholder = "Search by title or genre..."
 	ssi.CharLimit = 100
 
+	ihp := textinput.New()
+	ihp.Placeholder = "Path to history CSV (leave blank to skip)"
+	ihp.CharLimit = 512
+
+	isp := textinput.New()
+	isp.Placeholder = "Path to saved podcasts CSV (leave blank to skip)"
+	isp.CharLimit = 512
+
 	esi := textarea.New()
 	esi.Prompt = ""    // must be set before SetWidth so prompt width is 0
 	esi.Placeholder = "" // avoid placeholderView(), which doesn't pad lines to width
@@ -155,6 +169,8 @@ func initialModel() model {
 		savedPodcasts:      saved,
 		newEpisodeCounts:   make(map[string]int),
 		newEpisodesSince:   meta.LastOpenedAt,
+		importHistoryInput: ihp,
+		importSavedInput:   isp,
 	}
 }
 

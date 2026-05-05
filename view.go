@@ -63,6 +63,25 @@ func (m model) renderNowPlayingBar() string {
 
 func (m model) View() string {
 	var content string
+	if m.showImport {
+		rows := []string{
+			accentStyle.Render("Import Listening Data"),
+			faintStyle.Render("Leave a field blank to skip that file."),
+			"",
+			"History CSV:",
+			m.importHistoryInput.View(),
+			"",
+			"Saved Podcasts CSV:",
+			m.importSavedInput.View(),
+			"",
+			faintStyle.Render("Tab switch field · Enter import · Esc cancel"),
+		}
+		content = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("205")).
+			Padding(1, 3).
+			Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+	} else {
 	switch m.state {
 	case viewSearch:
 		if m.showClearHistory {
@@ -89,7 +108,11 @@ func (m model) View() string {
 		if m.exportMsg != "" {
 			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
 		}
-		content = fmt.Sprintf("%s\n\n%s\n\n%s%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter · ctrl+e to export"), statsBlock, exportLine)
+		importLine := ""
+		if m.importMsg != "" {
+			importLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.importMsg)
+		}
+		content = fmt.Sprintf("%s\n\n%s\n\n%s%s%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), statsBlock, exportLine, importLine)
 	case viewResults:
 		content = titleStyle.Render("Results:") + "\n\n"
 		for i, r := range m.searchResults {
@@ -314,9 +337,18 @@ func (m model) View() string {
 			content = dialog
 			break
 		}
-		content = titleStyle.Render("SAVED PODCASTS") + "\n\n"
+		const savedVisibleCount = 5
 		urls := m.savedDisplayURLs()
+		savedScrollTop := 0
+		if m.cursor >= savedVisibleCount {
+			savedScrollTop = m.cursor - savedVisibleCount + 1
+		}
+		content = titleStyle.Render("SAVED PODCASTS") + "\n\n"
+		rendered := 0
 		for i, url := range urls {
+			if i < savedScrollTop || i >= savedScrollTop+savedVisibleCount {
+				continue
+			}
 			podcast := m.savedPodcasts[url]
 			suffix := ""
 			if count := m.newEpisodeCounts[url]; count > 0 {
@@ -327,28 +359,38 @@ func (m model) View() string {
 			} else {
 				content += "  " + podcast.Title + suffix + "\n"
 			}
+			rendered++
+		}
+		for rendered < savedVisibleCount {
+			content += "\n"
+			rendered++
 		}
 		statsBlock := m.renderStatsBlock()
 		exportLine := ""
 		if m.exportMsg != "" {
 			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
 		}
+		importLine := ""
+		if m.importMsg != "" {
+			importLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.importMsg)
+		}
 		if m.savedFilter != "" {
 			filterLine := faintStyle.Render("Filter: ") +
 				accentStyle.Render(`"`+m.savedFilter+`"`) +
 				faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
 			content += "\n" + filterLine + "\n"
-			content += faintStyle.Render("enter to open · s search saved · ctrl+e export") + statsBlock + exportLine
+			content += faintStyle.Render("enter to open · s search saved") + statsBlock + exportLine + importLine
 		} else {
-			content += "\n" + faintStyle.Render("enter to open · s search saved · / new search · ctrl+e export") + statsBlock + exportLine
+			content += "\n" + faintStyle.Render("enter to open · s search saved · / new search") + statsBlock + exportLine + importLine
 		}
 	}
+	} // end else (showImport)
 	nowPlayingBar := ""
 	barHeight := 1 // always reserve 1 line for the quit hint
 	if m.state != viewPlayer {
 		nowPlayingBar = m.renderNowPlayingBar()
 		if nowPlayingBar != "" {
-			barHeight += 2
+			barHeight += 3
 		}
 	}
 
@@ -361,7 +403,7 @@ func (m model) View() string {
 	availHeight := max(m.windowHeight-barHeight, 1)
 	mainArea := lipgloss.Place(m.windowWidth, availHeight, lipgloss.Center, lipgloss.Center, content)
 	if nowPlayingBar != "" {
-		return mainArea + "\n" + nowPlayingBar + "\n" + quitHint
+		return mainArea + "\n" + nowPlayingBar + "\n\n" + quitHint
 	}
 	return mainArea + "\n" + quitHint
 }
@@ -410,7 +452,7 @@ func (m model) renderStatsBlock() string {
 		b.Render("└" + strings.Repeat("─", labelCW) + "┴" + strings.Repeat("─", valueCW) + "┘"),
 	}
 
-	return "\n\n" + strings.Join(rows, "\n") + "\n\n" + faintStyle.Render("ctrl+d to clear history")
+	return "\n\n" + strings.Join(rows, "\n") + "\n\n" + faintStyle.Render("ctrl+l load history · ctrl+e export history · ctrl+d delete history")
 }
 
 func (m model) renderSlider(pct float64, width int, timeInfo string) string {

@@ -54,16 +54,20 @@ func writeHistoryCSV(filename string, history History) error {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
-	w.Write([]string{"Episode", "Podcast", "Status", "Progress (seconds)", "Last Listened", "Feed URL"})
+	w.Write([]string{"Episode", "Podcast", "Status", "Progress (seconds)", "Last Listened", "Feed URL", "Key"})
 
-	entries := make([]HistoryEntry, 0, len(history))
-	for _, e := range history {
-		entries = append(entries, e)
+	type historyRow struct {
+		key   string
+		entry HistoryEntry
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		ti, tj := entries[i].ListenedAt, entries[j].ListenedAt
+	rows := make([]historyRow, 0, len(history))
+	for k, e := range history {
+		rows = append(rows, historyRow{k, e})
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		ti, tj := rows[i].entry.ListenedAt, rows[j].entry.ListenedAt
 		if ti.IsZero() && tj.IsZero() {
-			return entries[i].Title < entries[j].Title
+			return rows[i].entry.Title < rows[j].entry.Title
 		}
 		if ti.IsZero() {
 			return false
@@ -74,7 +78,8 @@ func writeHistoryCSV(filename string, history History) error {
 		return ti.After(tj)
 	})
 
-	for _, e := range entries {
+	for _, row := range rows {
+		e := row.entry
 		status := "In Progress"
 		if e.isCompleted() {
 			status = "Completed"
@@ -90,6 +95,7 @@ func writeHistoryCSV(filename string, history History) error {
 			fmt.Sprintf("%d", int(e.Progress.Seconds())),
 			listenedAt,
 			e.FeedURL,
+			row.key,
 		})
 	}
 

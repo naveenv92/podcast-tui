@@ -67,6 +67,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.exportMsg = "Exported: " + strings.Join(msg.filenames, ", ")
 		}
 		return m, nil
+	case importDoneMsg:
+		if msg.err != nil {
+			m.importMsg = "Import failed: " + msg.err.Error()
+		} else {
+			m.importMsg = fmt.Sprintf("Imported %d history entries, %d saved podcasts", msg.historyCount, msg.savedCount)
+			m.history = msg.history
+			m.savedPodcasts = msg.saved
+		}
+		m.showImport = false
+		return m, nil
 	case seekTimerMsg:
 		if msg.seq == m.seekSeq && m.pcmStreamer != nil {
 			if m.seekPending {
@@ -122,6 +132,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.KeyMsg:
 		m.exportMsg = ""
+		m.importMsg = ""
 		if m.showGoTo {
 			switch msg.String() {
 			case "esc":
@@ -235,6 +246,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.showImport {
+			switch msg.String() {
+			case "esc":
+				m.showImport = false
+			case "tab":
+				if m.importFocused == 0 {
+					m.importFocused = 1
+					m.importHistoryInput.Blur()
+					return m, m.importSavedInput.Focus()
+				} else {
+					m.importFocused = 0
+					m.importSavedInput.Blur()
+					return m, m.importHistoryInput.Focus()
+				}
+			case "enter":
+				return m, importData(
+					m.importHistoryInput.Value(),
+					m.importSavedInput.Value(),
+					m.history,
+					m.savedPodcasts,
+				)
+			default:
+				var cmd tea.Cmd
+				if m.importFocused == 0 {
+					m.importHistoryInput, cmd = m.importHistoryInput.Update(msg)
+				} else {
+					m.importSavedInput, cmd = m.importSavedInput.Update(msg)
+				}
+				return m, cmd
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			if m.ffmpegCmd != nil {
@@ -338,6 +381,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state == viewSearch || m.state == viewSaved {
 				return m, exportData(m.savedPodcasts, m.history)
 			}
+		case "ctrl+l":
+			if m.state == viewSearch || m.state == viewSaved {
+				dir := exportDir()
+				m.importHistoryInput.SetValue(findLatestExport(dir, "podcast-tui-history-*.csv"))
+				m.importSavedInput.SetValue(findLatestExport(dir, "podcast-tui-saved-*.csv"))
+				m.importFocused = 0
+				m.showImport = true
+				return m, m.importHistoryInput.Focus()
+			}
 		case "d":
 			if m.state == viewEpisodes && m.feed != nil && m.episodeCount() > 0 {
 				item := m.episodeItemAt(m.cursor)
@@ -404,7 +456,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "ctrl+d":
-			if m.state == viewSearch {
+			if m.state == viewSearch || m.state == viewSaved {
 				m.showClearHistory = true
 				m.clearHistoryInput.SetValue("")
 				return m, m.clearHistoryInput.Focus()
