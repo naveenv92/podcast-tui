@@ -41,7 +41,7 @@ func (h History) computeStats() ListeningStats {
 	var topURL string
 	var topTime time.Duration
 	for feedURL, t := range byFeed {
-		if t > topTime {
+		if t > topTime || (t == topTime && feedURL < topURL) {
 			topTime = t
 			topURL = feedURL
 		}

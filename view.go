@@ -409,7 +409,7 @@ func (m model) View() string {
 }
 
 func (m model) renderStatsBlock() string {
-	stats := m.history.computeStats()
+	stats := m.listeningStats
 	if stats.TotalTime == 0 {
 		return ""
 	}

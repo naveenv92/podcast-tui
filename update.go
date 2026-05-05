@@ -133,6 +133,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		m.exportMsg = ""
 		m.importMsg = ""
+		m.listeningStats = m.history.computeStats()
 		if m.showGoTo {
 			switch msg.String() {
 			case "esc":

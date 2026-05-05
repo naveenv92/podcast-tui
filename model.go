@@ -68,6 +68,7 @@ type model struct {
 	artworkURL      string // artwork URL of the currently loaded podcast
 	newEpisodeCounts map[string]int // feedURL -> count of episodes since last open
 	newEpisodesSince time.Time      // lastOpenedAt from previous session (zero = first run)
+	listeningStats   ListeningStats
 	// import
 	showImport         bool
 	importHistoryInput textinput.Model
@@ -169,6 +170,7 @@ func initialModel() model {
 		savedPodcasts:      saved,
 		newEpisodeCounts:   make(map[string]int),
 		newEpisodesSince:   meta.LastOpenedAt,
+		listeningStats:     loadHistory().computeStats(),
 		importHistoryInput: ihp,
 		importSavedInput:   isp,
 	}
