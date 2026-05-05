@@ -317,7 +317,7 @@ func (m model) View() string {
 			titleStyle.Copy().Width(m.windowWidth-50).Render(item.Title),
 			"\n", m.renderSlider(pct, m.windowWidth-50, timeStr),
 			"\n", statusLine,
-			faintStyle.Render(fmt.Sprintf("\n← -10s | → +30s | Space %s | g Go To | Esc ↩", spaceLabel)),
+			faintStyle.Render(fmt.Sprintf("\n← -10s | → +30s | Space %s | g Go To", spaceLabel)),
 		)
 		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
 	case viewSaved:
