@@ -122,7 +122,7 @@ func (m model) View() string {
 			}
 		}
 		content += "\n" + faintStyle.Render("↑/↓ navigate · enter select · q quit")
-		content += m.renderStatsBlock()
+		content += "\n" + m.renderStatsBlock()
 	case viewInProgress:
 		content = titleStyle.Render("IN-PROGRESS EPISODES") + "\n\n"
 		for i, item := range m.inProgressItems {
