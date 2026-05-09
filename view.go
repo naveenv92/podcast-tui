@@ -286,7 +286,6 @@ func (m model) View() string {
 			content = dialog
 			break
 		}
-		item := m.feed.Items[m.playingIndex]
 		var pct float64
 		var cur time.Duration
 		if m.pcmStreamer != nil {
@@ -314,12 +313,12 @@ func (m model) View() string {
 		}
 		info := lipgloss.JoinVertical(lipgloss.Left,
 			accentStyle.Render("▶ NOW PLAYING"),
-			titleStyle.Copy().Width(m.windowWidth-50).Render(item.Title),
+			titleStyle.Copy().Width(m.windowWidth-50).Render(m.playingTitle),
 			"\n", m.renderSlider(pct, m.windowWidth-50, timeStr),
 			"\n", statusLine,
 			faintStyle.Render(fmt.Sprintf("\n← -10s | → +30s | Space %s | g Go To", spaceLabel)),
 		)
-		content = lipgloss.JoinHorizontal(lipgloss.Center, m.albumArt, "    ", info)
+		content = lipgloss.JoinHorizontal(lipgloss.Center, m.playingAlbumArt, "    ", info)
 	case viewSaved:
 		if m.showSavedSearch {
 			rows := []string{

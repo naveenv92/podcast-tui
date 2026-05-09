@@ -44,8 +44,12 @@ type model struct {
 	goToErr          string
 	windowWidth      int
 	windowHeight     int
-	playingTitle     string
-	playingIndex     int // feed index of the episode currently in the player
+	playingTitle       string
+	playingIndex       int    // feed index of the episode currently in the player
+	playingAlbumArt    string // album art snapshot at play time
+	playingFeedURL     string // feed URL snapshot at play time
+	playingPodcastTitle string // podcast title snapshot at play time
+	playingEpisodeKey  string // history key snapshot at play time
 	showClearHistory   bool
 	clearHistoryInput  textinput.Model
 	// episode search / filter

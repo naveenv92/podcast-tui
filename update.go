@@ -110,16 +110,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tickMsg:
 		if m.pcmStreamer != nil {
-			if m.feed != nil {
+			if m.playingEpisodeKey != "" {
 				pos := m.currentPosition()
-				item := m.feed.Items[m.playingIndex]
-				key := episodeKey(item)
+				key := m.playingEpisodeKey
 				entry := m.history[key]
-				entry.Title = item.Title
-				entry.FeedURL = m.feedURL
-				if m.feed != nil {
-					entry.PodcastTitle = m.feed.Title
-				}
+				entry.Title = m.playingTitle
+				entry.FeedURL = m.playingFeedURL
+				entry.PodcastTitle = m.playingPodcastTitle
 				entry.Progress = pos
 				if m.totalDuration > 0 && pos >= m.totalDuration*95/100 && !entry.isCompleted() {
 					entry.Completed = true
@@ -541,8 +538,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				item := m.feed.Items[m.playingIndex]
 				m.totalDuration = parseDuration(item.ITunesExt.Duration)
 				m.playingTitle = item.Title
+				m.playingAlbumArt = m.albumArt
+				m.playingFeedURL = m.feedURL
+				m.playingPodcastTitle = m.feed.Title
+				m.playingEpisodeKey = episodeKey(item)
 				resumeFrom := time.Duration(0)
-				if entry, ok := m.history[episodeKey(item)]; ok && !entry.isCompleted() && entry.Progress > 0 {
+				if entry, ok := m.history[m.playingEpisodeKey]; ok && !entry.isCompleted() && entry.Progress > 0 {
 					resumeFrom = entry.Progress
 				}
 				return m, m.playAudio(item.Enclosures[0].URL, resumeFrom)
