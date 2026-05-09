@@ -342,7 +342,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "p":
-			if m.state != viewSearch && m.state != viewSaved && m.pcmStreamer != nil {
+			if m.state != viewSearch && m.pcmStreamer != nil {
 				m.state = viewPlayer
 				return m, nil
 			}
