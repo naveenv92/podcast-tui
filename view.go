@@ -105,6 +105,7 @@ func (m model) View() string {
 			}
 			content = titleStyle.Render("PODCAST TUI") + "\n\n"
 			opts := m.homeOptions()
+			var menuItems []string
 			for i, opt := range opts {
 				var label string
 				switch opt {
@@ -116,12 +117,13 @@ func (m model) View() string {
 					label = "🔎  Explore"
 				}
 				if m.cursor == i {
-					content += selStyle.Render("> "+label) + "\n"
+					menuItems = append(menuItems, selStyle.Render("  "+label+"  "))
 				} else {
-					content += "  " + label + "\n"
+					menuItems = append(menuItems, "  "+label+"  ")
 				}
 			}
-			content += "\n" + faintStyle.Render("↑/↓ navigate · enter select · q quit")
+			content += strings.Join(menuItems, faintStyle.Render("·")) + "\n"
+			content += "\n" + faintStyle.Render("←/→ navigate · enter select · q quit")
 			content += "\n\n" + m.renderStatsBlock()
 		case viewInProgress:
 			content = titleStyle.Render("IN-PROGRESS EPISODES") + "\n\n"

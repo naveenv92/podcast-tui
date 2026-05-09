@@ -355,15 +355,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "up", "k":
-			if m.cursor > 0 {
+			if m.state != viewHome && m.cursor > 0 {
 				m.cursor--
 			}
 		case "down", "j":
 			switch m.state {
-			case viewHome:
-				if m.cursor < len(m.homeOptions())-1 {
-					m.cursor++
-				}
 			case viewInProgress:
 				if m.cursor < len(m.inProgressItems)-1 {
 					m.cursor++
@@ -506,6 +502,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				speaker.Unlock()
 			}
 		case "left":
+			if m.state == viewHome {
+				if m.cursor > 0 {
+					m.cursor--
+				}
+				return m, nil
+			}
 			if m.pcmStreamer != nil {
 				target := max(m.currentPosition()-10*time.Second, 0)
 				m.seekOffset = target
@@ -517,6 +519,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				})
 			}
 		case "right":
+			if m.state == viewHome {
+				if m.cursor < len(m.homeOptions())-1 {
+					m.cursor++
+				}
+				return m, nil
+			}
 			if m.pcmStreamer != nil {
 				target := m.currentPosition() + 30*time.Second
 				if m.totalDuration > 0 && target > m.totalDuration {
