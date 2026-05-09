@@ -410,7 +410,7 @@ func (m model) View() string {
 			content = dialog
 			break
 		}
-		const savedVisibleCount = 5
+		const savedVisibleCount = 10
 		urls := m.savedDisplayURLs()
 		savedScrollTop := 0
 		if m.cursor >= savedVisibleCount {
