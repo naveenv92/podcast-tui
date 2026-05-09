@@ -82,390 +82,390 @@ func (m model) View() string {
 			Padding(1, 3).
 			Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 	} else {
-	switch m.state {
-	case viewHome:
-		if m.showClearHistory {
-			rows := []string{
-				accentStyle.Render("Clear Listening History"),
-				faintStyle.Render("This cannot be undone."),
-				"",
-				`Type "delete" and press Enter to confirm.`,
-				"",
-				m.clearHistoryInput.View(),
-				"",
-				faintStyle.Render("Enter confirm · Esc cancel"),
+		switch m.state {
+		case viewHome:
+			if m.showClearHistory {
+				rows := []string{
+					accentStyle.Render("Clear Listening History"),
+					faintStyle.Render("This cannot be undone."),
+					"",
+					`Type "delete" and press Enter to confirm.`,
+					"",
+					m.clearHistoryInput.View(),
+					"",
+					faintStyle.Render("Enter confirm · Esc cancel"),
+				}
+				dialog := lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("205")).
+					Padding(1, 3).
+					Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+				content = dialog
+				break
 			}
-			dialog := lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("205")).
-				Padding(1, 3).
-				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-			content = dialog
-			break
-		}
-		content = titleStyle.Render("PODCAST TUI") + "\n\n"
-		opts := m.homeOptions()
-		for i, opt := range opts {
-			var label string
-			switch opt {
-			case homeOptionInProgress:
-				label = "In-Progress Episodes"
-			case homeOptionSaved:
-				label = "Saved Podcasts"
-			case homeOptionSearch:
-				label = "Search for Podcasts"
-			}
-			if m.cursor == i {
-				content += selStyle.Render("> "+label) + "\n"
-			} else {
-				content += "  " + label + "\n"
-			}
-		}
-		content += "\n" + faintStyle.Render("↑/↓ navigate · enter select · q quit")
-		content += "\n\n" + m.renderStatsBlock()
-	case viewInProgress:
-		content = titleStyle.Render("IN-PROGRESS EPISODES") + "\n\n"
-		for i, item := range m.inProgressItems {
-			podcastPrefix := ""
-			if item.PodcastTitle != "" {
-				podcastPrefix = faintStyle.Render(item.PodcastTitle+" · ")
-			}
-			progress := faintStyle.Render("[" + formatDur(item.Progress) + " listened]")
-			line := podcastPrefix + item.EpisodeTitle + "  " + progress
-			if m.cursor == i {
-				content += selStyle.Render("> ") + line + "\n"
-			} else {
-				content += "  " + line + "\n"
-			}
-		}
-		content += "\n" + faintStyle.Render("enter to resume · esc to go back")
-	case viewSearch:
-		if m.showClearHistory {
-			rows := []string{
-				accentStyle.Render("Clear Listening History"),
-				faintStyle.Render("This cannot be undone."),
-				"",
-				`Type "delete" and press Enter to confirm.`,
-				"",
-				m.clearHistoryInput.View(),
-				"",
-				faintStyle.Render("Enter confirm · Esc cancel"),
-			}
-			dialog := lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("205")).
-				Padding(1, 3).
-				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-			content = dialog
-			break
-		}
-		exportLine := ""
-		if m.exportMsg != "" {
-			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
-		}
-		importLine := ""
-		if m.importMsg != "" {
-			importLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.importMsg)
-		}
-		content = fmt.Sprintf("%s\n\n%s\n\n%s%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), exportLine, importLine)
-	case viewResults:
-		content = titleStyle.Render("Results:") + "\n\n"
-		if m.searching {
-			content += faintStyle.Render("Searching...")
-		} else {
-			const resultsVisibleCount = 15
-			resultsScrollTop := 0
-			if m.cursor >= resultsVisibleCount {
-				resultsScrollTop = m.cursor - resultsVisibleCount + 1
-			}
-			for i, r := range m.searchResults {
-				if i < resultsScrollTop || i >= resultsScrollTop+resultsVisibleCount {
-					continue
+			content = titleStyle.Render("PODCAST TUI") + "\n\n"
+			opts := m.homeOptions()
+			for i, opt := range opts {
+				var label string
+				switch opt {
+				case homeOptionInProgress:
+					label = "▶  Continue Listening"
+				case homeOptionSaved:
+					label = "🎙  My Library"
+				case homeOptionSearch:
+					label = "🔎  Explore"
 				}
 				if m.cursor == i {
-					content += selStyle.Render("> "+r.CollectionName) + "\n"
+					content += selStyle.Render("> "+label) + "\n"
 				} else {
-					content += "  " + r.CollectionName + "\n"
+					content += "  " + label + "\n"
 				}
 			}
-		}
-	case viewEpisodes:
-		if m.showEpisodeDesc && m.episodeCount() > 0 {
-			item := m.episodeItemAt(m.cursor)
-			start := m.episodeDescScroll
-			end := start + descVisibleLines
-			if end > len(m.episodeDescLines) {
-				end = len(m.episodeDescLines)
+			content += "\n" + faintStyle.Render("↑/↓ navigate · enter select · q quit")
+			content += "\n\n" + m.renderStatsBlock()
+		case viewInProgress:
+			content = titleStyle.Render("IN-PROGRESS EPISODES") + "\n\n"
+			for i, item := range m.inProgressItems {
+				podcastPrefix := ""
+				if item.PodcastTitle != "" {
+					podcastPrefix = faintStyle.Render(item.PodcastTitle + " · ")
+				}
+				progress := faintStyle.Render("[" + formatDur(item.Progress) + " listened]")
+				line := podcastPrefix + item.EpisodeTitle + "  " + progress
+				if m.cursor == i {
+					content += selStyle.Render("> ") + line + "\n"
+				} else {
+					content += "  " + line + "\n"
+				}
 			}
-			visible := make([]string, end-start)
-			copy(visible, m.episodeDescLines[start:end])
-			for len(visible) < descVisibleLines {
-				visible = append(visible, "")
+			content += "\n" + faintStyle.Render("enter to resume · esc to go back")
+		case viewSearch:
+			if m.showClearHistory {
+				rows := []string{
+					accentStyle.Render("Clear Listening History"),
+					faintStyle.Render("This cannot be undone."),
+					"",
+					`Type "delete" and press Enter to confirm.`,
+					"",
+					m.clearHistoryInput.View(),
+					"",
+					faintStyle.Render("Enter confirm · Esc cancel"),
+				}
+				dialog := lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("205")).
+					Padding(1, 3).
+					Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+				content = dialog
+				break
 			}
-			scrollHint := ""
-			if len(m.episodeDescLines) > descVisibleLines {
-				scrollHint = fmt.Sprintf(" (%d/%d)", m.episodeDescScroll+1, len(m.episodeDescLines)-descVisibleLines+1)
+			exportLine := ""
+			if m.exportMsg != "" {
+				exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
 			}
-			rows := []string{
-				accentStyle.Render(item.Title),
-				faintStyle.Render(strings.Repeat("─", 60)),
-				"",
+			importLine := ""
+			if m.importMsg != "" {
+				importLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.importMsg)
 			}
-			rows = append(rows, visible...)
-			rows = append(rows,
-				"",
-				faintStyle.Render("↑/↓ scroll"+scrollHint+" · esc close"),
-			)
-			dialog := lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("205")).
-				Padding(1, 3).
-				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-			content = dialog
-			break
-		}
-		if m.showEpisodeSearch {
-			rows := []string{
-				accentStyle.Render("Search Episodes"),
-				"",
-				m.episodeSearchInput.View(),
-				"",
-				faintStyle.Render("Enter to search · Esc to cancel"),
-			}
-			dialog := lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("205")).
-				Padding(1, 3).
-				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-			content = dialog
-			break
-		}
-		const visibleCount = 15
-		scrollTop := 0
-		if m.cursor >= visibleCount {
-			scrollTop = m.cursor - visibleCount + 1
-		}
-		const dateColWidth = 12      // "Jan 02, 2006"
-		const progressColWidth = 8   // "Progress" header, " 50%    " data
-		// Row layout: cursor(2) + "| "(2) + date(12) + " | "(3) + title(N) + " | "(3) + progress(8) + " |"(2) = 32+N
-		titleColWidth := max(m.windowWidth-42, 20)
-		if titleColWidth > 80 {
-			titleColWidth = 80
-		}
-		header := fmt.Sprintf("  | %-*s | %-*s | %-*s |", dateColWidth, "Date", titleColWidth, "Episode", progressColWidth, "Progress")
-		divider := fmt.Sprintf("  |%s|%s|%s|", strings.Repeat("-", dateColWidth+2), strings.Repeat("-", titleColWidth+2), strings.Repeat("-", progressColWidth+2))
-		emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s | %-*s |", dateColWidth, "", titleColWidth, "", progressColWidth, "")
-		content = titleStyle.Render("Episodes:") + "\n\n"
-		if m.episodeFilter != "" {
-			suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s search saved · d description · m mark · u unmark", len(m.filteredEpisodes))
-			// "Filter: " (8) + `"` + query + `"` (2) + suffix
-			maxQueryRunes := max(m.windowWidth-8-2-len(suffix), 4)
-			displayQuery := m.episodeFilter
-			if runes := []rune(displayQuery); len(runes) > maxQueryRunes {
-				displayQuery = string(runes[:maxQueryRunes-1]) + "…"
-			}
-			filterLine := faintStyle.Render("Filter: ") +
-				accentStyle.Render("\""+displayQuery+"\"") +
-				faintStyle.Render(suffix)
-			content += filterLine + "\n"
-		} else {
-			_, isSaved := m.savedPodcasts[m.feedURL]
-			var saveHint string
-			if isSaved {
-				saveHint = "ctrl+u unsave podcast"
+			content = fmt.Sprintf("%s\n\n%s\n\n%s%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), exportLine, importLine)
+		case viewResults:
+			content = titleStyle.Render("Results:") + "\n\n"
+			if m.searching {
+				content += faintStyle.Render("Searching...")
 			} else {
-				saveHint = "ctrl+s save podcast"
-			}
-			content += faintStyle.Render("s search saved · d description · m mark played · u unmark · "+saveHint) + "\n"
-		}
-		content += "\n" + faintStyle.Render(header) + "\n"
-		content += faintStyle.Render(divider) + "\n"
-		rendered := 0
-		count := m.episodeCount()
-		if count == 0 && m.episodeFilter != "" {
-			content += faintStyle.Render("  No episodes match your search.") + "\n"
-			rendered = visibleCount // skip empty-row padding
-		}
-		for i := range count {
-			if i < scrollTop || i >= scrollTop+visibleCount {
-				continue
-			}
-			e := m.episodeItemAt(i)
-			dateStr := strings.Repeat(" ", dateColWidth)
-			if e.PublishedParsed != nil {
-				dateStr = e.PublishedParsed.Format("Jan 02, 2006")
-			}
-			title := e.Title
-			if runes := []rune(title); len(runes) > titleColWidth {
-				title = string(runes[:titleColWidth-1]) + "…"
-			}
-			entry, hasHistory := m.history[episodeKey(e)]
-			completed := hasHistory && entry.isCompleted()
-			inProgress := hasHistory && !completed && entry.Progress > 0
-
-			var progressStr string
-			if completed {
-				progressStr = "100%"
-			} else if inProgress && e.ITunesExt != nil {
-				total := parseDuration(e.ITunesExt.Duration)
-				if total > 0 {
-					pct := int(entry.Progress * 100 / total)
-					if pct > 99 {
-						pct = 99
+				const resultsVisibleCount = 15
+				resultsScrollTop := 0
+				if m.cursor >= resultsVisibleCount {
+					resultsScrollTop = m.cursor - resultsVisibleCount + 1
+				}
+				for i, r := range m.searchResults {
+					if i < resultsScrollTop || i >= resultsScrollTop+resultsVisibleCount {
+						continue
 					}
-					progressStr = fmt.Sprintf("%3d%%", pct)
+					if m.cursor == i {
+						content += selStyle.Render("> "+r.CollectionName) + "\n"
+					} else {
+						content += "  " + r.CollectionName + "\n"
+					}
 				}
 			}
-
-			row := fmt.Sprintf("| %-*s | %-*s | %-*s |", dateColWidth, dateStr, titleColWidth, title, progressColWidth, progressStr)
-			if m.cursor == i {
-				content += selStyle.Render("> "+row) + "\n"
-			} else if completed {
-				content += faintStyle.Render("  "+row) + "\n"
+		case viewEpisodes:
+			if m.showEpisodeDesc && m.episodeCount() > 0 {
+				item := m.episodeItemAt(m.cursor)
+				start := m.episodeDescScroll
+				end := start + descVisibleLines
+				if end > len(m.episodeDescLines) {
+					end = len(m.episodeDescLines)
+				}
+				visible := make([]string, end-start)
+				copy(visible, m.episodeDescLines[start:end])
+				for len(visible) < descVisibleLines {
+					visible = append(visible, "")
+				}
+				scrollHint := ""
+				if len(m.episodeDescLines) > descVisibleLines {
+					scrollHint = fmt.Sprintf(" (%d/%d)", m.episodeDescScroll+1, len(m.episodeDescLines)-descVisibleLines+1)
+				}
+				rows := []string{
+					accentStyle.Render(item.Title),
+					faintStyle.Render(strings.Repeat("─", 60)),
+					"",
+				}
+				rows = append(rows, visible...)
+				rows = append(rows,
+					"",
+					faintStyle.Render("↑/↓ scroll"+scrollHint+" · esc close"),
+				)
+				dialog := lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("205")).
+					Padding(1, 3).
+					Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+				content = dialog
+				break
+			}
+			if m.showEpisodeSearch {
+				rows := []string{
+					accentStyle.Render("Search Episodes"),
+					"",
+					m.episodeSearchInput.View(),
+					"",
+					faintStyle.Render("Enter to search · Esc to cancel"),
+				}
+				dialog := lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("205")).
+					Padding(1, 3).
+					Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+				content = dialog
+				break
+			}
+			const visibleCount = 15
+			scrollTop := 0
+			if m.cursor >= visibleCount {
+				scrollTop = m.cursor - visibleCount + 1
+			}
+			const dateColWidth = 12    // "Jan 02, 2006"
+			const progressColWidth = 8 // "Progress" header, " 50%    " data
+			// Row layout: cursor(2) + "| "(2) + date(12) + " | "(3) + title(N) + " | "(3) + progress(8) + " |"(2) = 32+N
+			titleColWidth := max(m.windowWidth-42, 20)
+			if titleColWidth > 80 {
+				titleColWidth = 80
+			}
+			header := fmt.Sprintf("  | %-*s | %-*s | %-*s |", dateColWidth, "Date", titleColWidth, "Episode", progressColWidth, "Progress")
+			divider := fmt.Sprintf("  |%s|%s|%s|", strings.Repeat("-", dateColWidth+2), strings.Repeat("-", titleColWidth+2), strings.Repeat("-", progressColWidth+2))
+			emptyRow := "  " + fmt.Sprintf("| %-*s | %-*s | %-*s |", dateColWidth, "", titleColWidth, "", progressColWidth, "")
+			content = titleStyle.Render("Episodes:") + "\n\n"
+			if m.episodeFilter != "" {
+				suffix := fmt.Sprintf(" · %d result(s) · Esc to clear · s search saved · d description · m mark · u unmark", len(m.filteredEpisodes))
+				// "Filter: " (8) + `"` + query + `"` (2) + suffix
+				maxQueryRunes := max(m.windowWidth-8-2-len(suffix), 4)
+				displayQuery := m.episodeFilter
+				if runes := []rune(displayQuery); len(runes) > maxQueryRunes {
+					displayQuery = string(runes[:maxQueryRunes-1]) + "…"
+				}
+				filterLine := faintStyle.Render("Filter: ") +
+					accentStyle.Render("\""+displayQuery+"\"") +
+					faintStyle.Render(suffix)
+				content += filterLine + "\n"
 			} else {
-				content += "  " + row + "\n"
+				_, isSaved := m.savedPodcasts[m.feedURL]
+				var saveHint string
+				if isSaved {
+					saveHint = "ctrl+u unsave podcast"
+				} else {
+					saveHint = "ctrl+s save podcast"
+				}
+				content += faintStyle.Render("s search saved · d description · m mark played · u unmark · "+saveHint) + "\n"
 			}
-			rendered++
-		}
-		for rendered < visibleCount {
-			content += emptyRow + "\n"
-			rendered++
-		}
-	case viewPlayer:
-		if m.showGoTo {
-			rows := []string{
-				accentStyle.Render("Go To Position"),
-				faintStyle.Render("MM:SS or HH:MM:SS"),
-				"",
-				m.goToInput.View(),
+			content += "\n" + faintStyle.Render(header) + "\n"
+			content += faintStyle.Render(divider) + "\n"
+			rendered := 0
+			count := m.episodeCount()
+			if count == 0 && m.episodeFilter != "" {
+				content += faintStyle.Render("  No episodes match your search.") + "\n"
+				rendered = visibleCount // skip empty-row padding
 			}
-			if m.goToErr != "" {
-				rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.goToErr))
-			}
-			rows = append(rows, "", faintStyle.Render("Enter confirm · Esc cancel"))
-			dialog := lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("205")).
-				Padding(1, 3).
-				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-			content = dialog
-			break
-		}
-		var pct float64
-		var cur time.Duration
-		if m.pcmStreamer != nil {
-			cur = m.currentPosition()
-			if m.totalDuration > 0 {
-				pct = float64(cur) / float64(m.totalDuration)
-			}
-		}
-		timeStr := fmt.Sprintf("%s / %s", formatDur(cur), formatDur(m.totalDuration))
+			for i := range count {
+				if i < scrollTop || i >= scrollTop+visibleCount {
+					continue
+				}
+				e := m.episodeItemAt(i)
+				dateStr := strings.Repeat(" ", dateColWidth)
+				if e.PublishedParsed != nil {
+					dateStr = e.PublishedParsed.Format("Jan 02, 2006")
+				}
+				title := e.Title
+				if runes := []rune(title); len(runes) > titleColWidth {
+					title = string(runes[:titleColWidth-1]) + "…"
+				}
+				entry, hasHistory := m.history[episodeKey(e)]
+				completed := hasHistory && entry.isCompleted()
+				inProgress := hasHistory && !completed && entry.Progress > 0
 
-		var statusLine string
-		if m.statusMsg != "" {
-			statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.statusMsg)
-		} else if m.paused {
-			statusLine = faintStyle.Render("- ") + accentStyle.Render("⏸  Paused") + faintStyle.Render(" +")
-		} else if m.pcmStreamer != nil && atomic.LoadInt64(&m.pcmStreamer.samplesPlayed) > 0 {
-			statusLine = faintStyle.Render("- ") + accentStyle.Render(fmt.Sprintf("%.2fx Speed", m.speed)) + faintStyle.Render(" +")
-		} else {
-			statusLine = faintStyle.Render("Loading...")
-		}
+				var progressStr string
+				if completed {
+					progressStr = "100%"
+				} else if inProgress && e.ITunesExt != nil {
+					total := parseDuration(e.ITunesExt.Duration)
+					if total > 0 {
+						pct := int(entry.Progress * 100 / total)
+						if pct > 99 {
+							pct = 99
+						}
+						progressStr = fmt.Sprintf("%3d%%", pct)
+					}
+				}
 
-		spaceLabel := "⏸"
-		if m.paused {
-			spaceLabel = "▶"
-		}
-		info := lipgloss.JoinVertical(lipgloss.Left,
-			accentStyle.Render("▶ NOW PLAYING"),
-			titleStyle.Copy().Width(m.windowWidth-50).Render(m.playingTitle),
-			"\n", m.renderSlider(pct, m.windowWidth-50, timeStr),
-			"\n", statusLine,
-			faintStyle.Render(fmt.Sprintf("\n← -10s | → +30s | Space %s | g Go To", spaceLabel)),
-		)
-		content = lipgloss.JoinHorizontal(lipgloss.Center, m.playingAlbumArt, "    ", info)
-	case viewSaved:
-		if m.showClearHistory {
-			rows := []string{
-				accentStyle.Render("Clear Listening History"),
-				faintStyle.Render("This cannot be undone."),
-				"",
-				`Type "delete" and press Enter to confirm.`,
-				"",
-				m.clearHistoryInput.View(),
-				"",
-				faintStyle.Render("Enter confirm · Esc cancel"),
+				row := fmt.Sprintf("| %-*s | %-*s | %-*s |", dateColWidth, dateStr, titleColWidth, title, progressColWidth, progressStr)
+				if m.cursor == i {
+					content += selStyle.Render("> "+row) + "\n"
+				} else if completed {
+					content += faintStyle.Render("  "+row) + "\n"
+				} else {
+					content += "  " + row + "\n"
+				}
+				rendered++
 			}
-			dialog := lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("205")).
-				Padding(1, 3).
-				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-			content = dialog
-			break
-		}
-		if m.showSavedSearch {
-			rows := []string{
-				accentStyle.Render("Search Saved Podcasts"),
-				"",
-				m.savedSearchInput.View(),
-				"",
-				faintStyle.Render("Enter to search · Esc to cancel"),
+			for rendered < visibleCount {
+				content += emptyRow + "\n"
+				rendered++
 			}
-			dialog := lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("205")).
-				Padding(1, 3).
-				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
-			content = dialog
-			break
-		}
-		const savedVisibleCount = 10
-		urls := m.savedDisplayURLs()
-		savedScrollTop := 0
-		if m.cursor >= savedVisibleCount {
-			savedScrollTop = m.cursor - savedVisibleCount + 1
-		}
-		content = titleStyle.Render("SAVED PODCASTS") + "\n\n"
-		rendered := 0
-		for i, url := range urls {
-			if i < savedScrollTop || i >= savedScrollTop+savedVisibleCount {
-				continue
+		case viewPlayer:
+			if m.showGoTo {
+				rows := []string{
+					accentStyle.Render("Go To Position"),
+					faintStyle.Render("MM:SS or HH:MM:SS"),
+					"",
+					m.goToInput.View(),
+				}
+				if m.goToErr != "" {
+					rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.goToErr))
+				}
+				rows = append(rows, "", faintStyle.Render("Enter confirm · Esc cancel"))
+				dialog := lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("205")).
+					Padding(1, 3).
+					Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+				content = dialog
+				break
 			}
-			podcast := m.savedPodcasts[url]
-			suffix := ""
-			if count := m.newEpisodeCounts[url]; count > 0 {
-				suffix = " " + faintStyle.Render(fmt.Sprintf("(%d new)", count))
+			var pct float64
+			var cur time.Duration
+			if m.pcmStreamer != nil {
+				cur = m.currentPosition()
+				if m.totalDuration > 0 {
+					pct = float64(cur) / float64(m.totalDuration)
+				}
 			}
-			if m.cursor == i {
-				content += selStyle.Render("> "+podcast.Title) + suffix + "\n"
+			timeStr := fmt.Sprintf("%s / %s", formatDur(cur), formatDur(m.totalDuration))
+
+			var statusLine string
+			if m.statusMsg != "" {
+				statusLine = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5F5F")).Render(m.statusMsg)
+			} else if m.paused {
+				statusLine = faintStyle.Render("- ") + accentStyle.Render("⏸  Paused") + faintStyle.Render(" +")
+			} else if m.pcmStreamer != nil && atomic.LoadInt64(&m.pcmStreamer.samplesPlayed) > 0 {
+				statusLine = faintStyle.Render("- ") + accentStyle.Render(fmt.Sprintf("%.2fx Speed", m.speed)) + faintStyle.Render(" +")
 			} else {
-				content += "  " + podcast.Title + suffix + "\n"
+				statusLine = faintStyle.Render("Loading...")
 			}
-			rendered++
+
+			spaceLabel := "⏸"
+			if m.paused {
+				spaceLabel = "▶"
+			}
+			info := lipgloss.JoinVertical(lipgloss.Left,
+				accentStyle.Render("▶ NOW PLAYING"),
+				titleStyle.Copy().Width(m.windowWidth-50).Render(m.playingTitle),
+				"\n", m.renderSlider(pct, m.windowWidth-50, timeStr),
+				"\n", statusLine,
+				faintStyle.Render(fmt.Sprintf("\n← -10s | → +30s | Space %s | g Go To", spaceLabel)),
+			)
+			content = lipgloss.JoinHorizontal(lipgloss.Center, m.playingAlbumArt, "    ", info)
+		case viewSaved:
+			if m.showClearHistory {
+				rows := []string{
+					accentStyle.Render("Clear Listening History"),
+					faintStyle.Render("This cannot be undone."),
+					"",
+					`Type "delete" and press Enter to confirm.`,
+					"",
+					m.clearHistoryInput.View(),
+					"",
+					faintStyle.Render("Enter confirm · Esc cancel"),
+				}
+				dialog := lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("205")).
+					Padding(1, 3).
+					Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+				content = dialog
+				break
+			}
+			if m.showSavedSearch {
+				rows := []string{
+					accentStyle.Render("Search Saved Podcasts"),
+					"",
+					m.savedSearchInput.View(),
+					"",
+					faintStyle.Render("Enter to search · Esc to cancel"),
+				}
+				dialog := lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("205")).
+					Padding(1, 3).
+					Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+				content = dialog
+				break
+			}
+			const savedVisibleCount = 10
+			urls := m.savedDisplayURLs()
+			savedScrollTop := 0
+			if m.cursor >= savedVisibleCount {
+				savedScrollTop = m.cursor - savedVisibleCount + 1
+			}
+			content = titleStyle.Render("SAVED PODCASTS") + "\n\n"
+			rendered := 0
+			for i, url := range urls {
+				if i < savedScrollTop || i >= savedScrollTop+savedVisibleCount {
+					continue
+				}
+				podcast := m.savedPodcasts[url]
+				suffix := ""
+				if count := m.newEpisodeCounts[url]; count > 0 {
+					suffix = " " + faintStyle.Render(fmt.Sprintf("(%d new)", count))
+				}
+				if m.cursor == i {
+					content += selStyle.Render("> "+podcast.Title) + suffix + "\n"
+				} else {
+					content += "  " + podcast.Title + suffix + "\n"
+				}
+				rendered++
+			}
+			for rendered < savedVisibleCount {
+				content += "\n"
+				rendered++
+			}
+			exportLine := ""
+			if m.exportMsg != "" {
+				exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
+			}
+			importLine := ""
+			if m.importMsg != "" {
+				importLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.importMsg)
+			}
+			if m.savedFilter != "" {
+				filterLine := faintStyle.Render("Filter: ") +
+					accentStyle.Render(`"`+m.savedFilter+`"`) +
+					faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
+				content += "\n" + filterLine + "\n"
+				content += faintStyle.Render("enter to open · s search saved") + exportLine + importLine
+			} else {
+				content += "\n" + faintStyle.Render("enter to open · s search saved") + exportLine + importLine
+			}
 		}
-		for rendered < savedVisibleCount {
-			content += "\n"
-			rendered++
-		}
-		exportLine := ""
-		if m.exportMsg != "" {
-			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
-		}
-		importLine := ""
-		if m.importMsg != "" {
-			importLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.importMsg)
-		}
-		if m.savedFilter != "" {
-			filterLine := faintStyle.Render("Filter: ") +
-				accentStyle.Render(`"`+m.savedFilter+`"`) +
-				faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
-			content += "\n" + filterLine + "\n"
-			content += faintStyle.Render("enter to open · s search saved") + exportLine + importLine
-		} else {
-			content += "\n" + faintStyle.Render("enter to open · s search saved") + exportLine + importLine
-		}
-	}
 	} // end else (showImport)
 	nowPlayingBar := ""
 	barHeight := 1 // always reserve 1 line for the quit hint
