@@ -315,7 +315,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ffmpegCmd.Process.Kill()
 			}
 			return m, tea.Quit
-		case "esc", "backspace":
+		case "esc":
 			if m.state == viewEpisodes && m.filteredEpisodes != nil {
 				m.filteredEpisodes = nil
 				m.episodeFilter = ""
