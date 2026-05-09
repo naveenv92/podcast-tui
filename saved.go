@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 type SavedPodcast struct {
@@ -38,14 +39,23 @@ func saveSaved(s SavedPodcasts) {
 	os.WriteFile(path, data, 0644)
 }
 
-// savedSortedURLs returns feed URLs sorted alphabetically by podcast title.
+// sortKey strips a leading "the " (case-insensitive) for alphabetical sorting.
+func sortKey(title string) string {
+	if strings.HasPrefix(strings.ToLower(title), "the ") {
+		return title[4:]
+	}
+	return title
+}
+
+// savedSortedURLs returns feed URLs sorted alphabetically by podcast title,
+// ignoring a leading "The".
 func savedSortedURLs(s SavedPodcasts) []string {
 	urls := make([]string, 0, len(s))
 	for url := range s {
 		urls = append(urls, url)
 	}
 	sort.Slice(urls, func(i, j int) bool {
-		return s[urls[i]].Title < s[urls[j]].Title
+		return sortKey(s[urls[i]].Title) < sortKey(s[urls[j]].Title)
 	})
 	return urls
 }
