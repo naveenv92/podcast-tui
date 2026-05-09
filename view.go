@@ -122,6 +122,7 @@ func (m model) View() string {
 			}
 		}
 		content += "\n" + faintStyle.Render("↑/↓ navigate · enter select · q quit")
+		content += m.renderStatsBlock()
 	case viewInProgress:
 		content = titleStyle.Render("IN-PROGRESS EPISODES") + "\n\n"
 		for i, item := range m.inProgressItems {
@@ -158,7 +159,6 @@ func (m model) View() string {
 			content = dialog
 			break
 		}
-		statsBlock := m.renderStatsBlock()
 		exportLine := ""
 		if m.exportMsg != "" {
 			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
@@ -167,7 +167,7 @@ func (m model) View() string {
 		if m.importMsg != "" {
 			importLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.importMsg)
 		}
-		content = fmt.Sprintf("%s\n\n%s\n\n%s%s%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), statsBlock, exportLine, importLine)
+		content = fmt.Sprintf("%s\n\n%s\n\n%s%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), exportLine, importLine)
 	case viewResults:
 		content = titleStyle.Render("Results:") + "\n\n"
 		for i, r := range m.searchResults {
@@ -438,7 +438,6 @@ func (m model) View() string {
 			content += "\n"
 			rendered++
 		}
-		statsBlock := m.renderStatsBlock()
 		exportLine := ""
 		if m.exportMsg != "" {
 			exportLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.exportMsg)
@@ -452,9 +451,9 @@ func (m model) View() string {
 				accentStyle.Render(`"`+m.savedFilter+`"`) +
 				faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
 			content += "\n" + filterLine + "\n"
-			content += faintStyle.Render("enter to open · s search saved") + statsBlock + exportLine + importLine
+			content += faintStyle.Render("enter to open · s search saved") + exportLine + importLine
 		} else {
-			content += "\n" + faintStyle.Render("enter to open · s search saved") + statsBlock + exportLine + importLine
+			content += "\n" + faintStyle.Render("enter to open · s search saved") + exportLine + importLine
 		}
 	}
 	} // end else (showImport)
