@@ -168,6 +168,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if m.clearHistoryInput.Value() == "delete" {
 					m.history = clearHistory()
+					m.listeningStats = m.history.computeStats()
 					m.showClearHistory = false
 					m.clearHistoryInput.SetValue("")
 				}
