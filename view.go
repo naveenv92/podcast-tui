@@ -169,14 +169,20 @@ func (m model) View() string {
 		}
 		content = fmt.Sprintf("%s\n\n%s\n\n%s%s%s", titleStyle.Render("PODCAST SEARCH"), m.textInput.View(), faintStyle.Render("Type and press Enter"), exportLine, importLine)
 	case viewResults:
+		const resultsVisibleCount = 15
+		resultsScrollTop := 0
+		if m.cursor >= resultsVisibleCount {
+			resultsScrollTop = m.cursor - resultsVisibleCount + 1
+		}
 		content = titleStyle.Render("Results:") + "\n\n"
 		for i, r := range m.searchResults {
-			cursor := "  "
+			if i < resultsScrollTop || i >= resultsScrollTop+resultsVisibleCount {
+				continue
+			}
 			if m.cursor == i {
-				cursor = "> "
-				content += selStyle.Render(cursor+r.CollectionName) + "\n"
+				content += selStyle.Render("> "+r.CollectionName) + "\n"
 			} else {
-				content += cursor + r.CollectionName + "\n"
+				content += "  " + r.CollectionName + "\n"
 			}
 		}
 	case viewEpisodes:

@@ -31,7 +31,7 @@ type albumArtMsg string
 
 func searchPodcasts(query string) tea.Cmd {
 	return func() tea.Msg {
-		endpoint := fmt.Sprintf("https://itunes.apple.com/search?term=%s&entity=podcast&limit=15", url.QueryEscape(query))
+		endpoint := fmt.Sprintf("https://itunes.apple.com/search?term=%s&entity=podcast&limit=200", url.QueryEscape(query))
 		resp, _ := http.Get(endpoint)
 		var res SearchResponse
 		json.NewDecoder(resp.Body).Decode(&res)
