@@ -74,6 +74,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.importMsg = fmt.Sprintf("Imported %d history entries, %d saved podcasts", msg.historyCount, msg.savedCount)
 			m.history = msg.history
 			m.savedPodcasts = msg.saved
+			m.listeningStats = m.history.computeStats()
 		}
 		m.showImport = false
 		return m, nil
@@ -125,15 +126,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.history[key] = entry
 				saveHistory(m.history)
 			}
+			m.statsTick++
+			if m.statsTick%30 == 0 {
+				m.listeningStats = m.history.computeStats()
+			}
 			return m, tick()
 		}
 	case tea.KeyMsg:
 		m.exportMsg = ""
 		m.importMsg = ""
-		if time.Since(m.statsLastComputed) >= 400*time.Millisecond {
-			m.listeningStats = m.history.computeStats()
-			m.statsLastComputed = time.Now()
-		}
 		if m.showGoTo {
 			switch msg.String() {
 			case "esc":
@@ -310,15 +311,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.state = viewSearch
 				}
 				m.cursor = 0
+				m.listeningStats = m.history.computeStats()
 				return m, nil
 			}
 			if m.state > viewSearch {
 				m.state--
+				if m.state == viewSearch || m.state == viewSaved {
+					m.listeningStats = m.history.computeStats()
+				}
 				return m, nil
 			}
 			if m.state == viewSearch && msg.String() == "esc" && len(m.savedPodcasts) > 0 {
 				m.state = viewSaved
 				m.cursor = 0
+				m.listeningStats = m.history.computeStats()
 				return m, nil
 			}
 		case "up", "k":
@@ -356,6 +362,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.state == viewSaved {
 				m.state = viewSearch
 				m.cursor = 0
+				m.listeningStats = m.history.computeStats()
 				return m, m.textInput.Focus()
 			}
 		case "ctrl+s":
