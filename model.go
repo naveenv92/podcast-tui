@@ -52,6 +52,7 @@ type model struct {
 	totalDuration    time.Duration
 	speed            float64
 	paused           bool
+	searching        bool
 	statusMsg        string
 	exportMsg        string
 	ffmpegGeneration int

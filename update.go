@@ -29,7 +29,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowWidth, m.windowHeight = msg.Width, msg.Height
 	case SearchResponse:
 		m.searchResults = msg.Results
-		m.state = viewResults
+		m.searching = false
 		m.cursor = 0
 	case *gofeed.Feed:
 		m.feed = msg
@@ -593,6 +593,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Batch(fetchFeed(url), fetchAlbumArt(podcast.ArtworkURL))
 				}
 			} else if m.state == viewSearch {
+				m.state = viewResults
+				m.searchResults = nil
+				m.searching = true
+				m.cursor = 0
 				return m, searchPodcasts(m.textInput.Value())
 			} else if m.state == viewResults {
 				res := m.searchResults[m.cursor]
