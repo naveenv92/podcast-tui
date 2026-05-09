@@ -320,6 +320,25 @@ func (m model) View() string {
 		)
 		content = lipgloss.JoinHorizontal(lipgloss.Center, m.playingAlbumArt, "    ", info)
 	case viewSaved:
+		if m.showClearHistory {
+			rows := []string{
+				accentStyle.Render("Clear Listening History"),
+				faintStyle.Render("This cannot be undone."),
+				"",
+				`Type "delete" and press Enter to confirm.`,
+				"",
+				m.clearHistoryInput.View(),
+				"",
+				faintStyle.Render("Enter confirm · Esc cancel"),
+			}
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
 		if m.showSavedSearch {
 			rows := []string{
 				accentStyle.Render("Search Saved Podcasts"),
