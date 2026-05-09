@@ -130,7 +130,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		m.exportMsg = ""
 		m.importMsg = ""
-		m.listeningStats = m.history.computeStats()
+		if time.Since(m.statsLastComputed) >= 400*time.Millisecond {
+			m.listeningStats = m.history.computeStats()
+			m.statsLastComputed = time.Now()
+		}
 		if m.showGoTo {
 			switch msg.String() {
 			case "esc":

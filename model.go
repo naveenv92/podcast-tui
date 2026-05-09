@@ -37,8 +37,9 @@ type model struct {
 	statusMsg        string
 	exportMsg        string
 	ffmpegGeneration int
-	seekPending      bool // true while a background seek is in-flight
-	seekSeq          int  // incremented on each keypress to expire stale debounce timers
+	seekPending           bool      // true while a background seek is in-flight
+	seekSeq               int       // incremented on each keypress to expire stale debounce timers
+	statsLastComputed     time.Time // throttle stats recomputation to at most once per 400ms
 	showGoTo         bool
 	goToInput        textinput.Model
 	goToErr          string
