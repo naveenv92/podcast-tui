@@ -6,11 +6,13 @@ import (
 )
 
 const (
-	viewSearch = iota
+	viewHome = iota
+	viewSearch
 	viewResults
 	viewEpisodes
 	viewPlayer
 	viewSaved
+	viewInProgress
 
 	descVisibleLines = 12
 )

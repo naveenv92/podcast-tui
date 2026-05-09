@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -16,6 +17,23 @@ import (
 	"github.com/gopxl/beep/speaker"
 	"github.com/mmcdole/gofeed"
 )
+
+type homeOption int
+
+const (
+	homeOptionInProgress homeOption = iota
+	homeOptionSaved
+	homeOptionSearch
+)
+
+type inProgressItem struct {
+	Key          string
+	EpisodeTitle string
+	PodcastTitle string
+	FeedURL      string
+	ArtworkURL   string
+	Progress     time.Duration
+}
 
 type model struct {
 	state            int
@@ -70,7 +88,10 @@ type model struct {
 	// saved podcasts
 	savedPodcasts   SavedPodcasts
 	fromSaved       bool   // true when viewEpisodes was reached from viewSaved
+	fromInProgress  bool   // true when viewEpisodes was reached from viewInProgress
+	autoPlayKey     string // if set when a feed loads, auto-play the matching episode
 	artworkURL      string // artwork URL of the currently loaded podcast
+	inProgressItems []inProgressItem
 	newEpisodeCounts map[string]int // feedURL -> count of episodes since last open
 	newEpisodesSince time.Time      // lastOpenedAt from previous session (zero = first run)
 	listeningStats   ListeningStats
@@ -155,9 +176,18 @@ func initialModel() model {
 	esi.FocusedStyle.CursorLine = lipgloss.NewStyle()
 
 	saved := loadSaved()
+	history := loadHistory()
 	initialState := viewSearch
-	if len(saved) > 0 {
-		initialState = viewSaved
+	hasSaved := len(saved) > 0
+	hasInProgress := false
+	for _, entry := range history {
+		if !entry.isCompleted() && entry.Progress > 0 {
+			hasInProgress = true
+			break
+		}
+	}
+	if hasSaved || hasInProgress {
+		initialState = viewHome
 	}
 
 	meta := loadMeta()
@@ -171,7 +201,7 @@ func initialModel() model {
 		episodeSearchInput: esi,
 		savedSearchInput:   ssi,
 		speed:              1.0,
-		history:            loadHistory(),
+		history:            history,
 		savedPodcasts:      saved,
 		newEpisodeCounts:   make(map[string]int),
 		newEpisodesSince:   meta.LastOpenedAt,
@@ -187,6 +217,49 @@ func (m *model) currentPosition() time.Duration {
 	}
 	elapsed := time.Duration(atomic.LoadInt64(&m.pcmStreamer.samplesPlayed)) * time.Second / time.Duration(outputSampleRate)
 	return m.seekOffset + time.Duration(float64(elapsed)*m.speed)
+}
+
+func (m model) homeOptions() []homeOption {
+	var opts []homeOption
+	for _, entry := range m.history {
+		if !entry.isCompleted() && entry.Progress > 0 {
+			opts = append(opts, homeOptionInProgress)
+			break
+		}
+	}
+	if len(m.savedPodcasts) > 0 {
+		opts = append(opts, homeOptionSaved)
+	}
+	opts = append(opts, homeOptionSearch)
+	return opts
+}
+
+func (m model) computeInProgressItems() []inProgressItem {
+	var items []inProgressItem
+	for key, entry := range m.history {
+		if entry.isCompleted() || entry.Progress == 0 {
+			continue
+		}
+		artworkURL := ""
+		if p, ok := m.savedPodcasts[entry.FeedURL]; ok {
+			artworkURL = p.ArtworkURL
+		}
+		items = append(items, inProgressItem{
+			Key:          key,
+			EpisodeTitle: entry.Title,
+			PodcastTitle: entry.PodcastTitle,
+			FeedURL:      entry.FeedURL,
+			ArtworkURL:   artworkURL,
+			Progress:     entry.Progress,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].PodcastTitle != items[j].PodcastTitle {
+			return items[i].PodcastTitle < items[j].PodcastTitle
+		}
+		return items[i].EpisodeTitle < items[j].EpisodeTitle
+	})
+	return items
 }
 
 func (m *model) playAudio(audioURL string, seekTo time.Duration) tea.Cmd {

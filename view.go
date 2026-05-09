@@ -29,7 +29,7 @@ func (m model) renderNowPlayingBar() string {
 	}
 
 	toggleKey, playPauseKey := "p", "space"
-	if m.state == viewSearch {
+	if m.state == viewSearch || m.state == viewHome {
 		toggleKey, playPauseKey = "ctrl+p", "ctrl+k"
 	}
 	playPauseIcon := "⏸"
@@ -83,6 +83,61 @@ func (m model) View() string {
 			Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
 	} else {
 	switch m.state {
+	case viewHome:
+		if m.showClearHistory {
+			rows := []string{
+				accentStyle.Render("Clear Listening History"),
+				faintStyle.Render("This cannot be undone."),
+				"",
+				`Type "delete" and press Enter to confirm.`,
+				"",
+				m.clearHistoryInput.View(),
+				"",
+				faintStyle.Render("Enter confirm · Esc cancel"),
+			}
+			dialog := lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("205")).
+				Padding(1, 3).
+				Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+			content = dialog
+			break
+		}
+		content = titleStyle.Render("PODCAST TUI") + "\n\n"
+		opts := m.homeOptions()
+		for i, opt := range opts {
+			var label string
+			switch opt {
+			case homeOptionInProgress:
+				label = "In-Progress Episodes"
+			case homeOptionSaved:
+				label = "Saved Podcasts"
+			case homeOptionSearch:
+				label = "Search for Podcasts"
+			}
+			if m.cursor == i {
+				content += selStyle.Render("> "+label) + "\n"
+			} else {
+				content += "  " + label + "\n"
+			}
+		}
+		content += "\n" + faintStyle.Render("↑/↓ navigate · enter select · q quit")
+	case viewInProgress:
+		content = titleStyle.Render("IN-PROGRESS EPISODES") + "\n\n"
+		for i, item := range m.inProgressItems {
+			podcastPrefix := ""
+			if item.PodcastTitle != "" {
+				podcastPrefix = faintStyle.Render(item.PodcastTitle+" · ")
+			}
+			progress := faintStyle.Render("[" + formatDur(item.Progress) + " listened]")
+			line := podcastPrefix + item.EpisodeTitle + "  " + progress
+			if m.cursor == i {
+				content += selStyle.Render("> ") + line + "\n"
+			} else {
+				content += "  " + line + "\n"
+			}
+		}
+		content += "\n" + faintStyle.Render("enter to resume · esc to go back")
 	case viewSearch:
 		if m.showClearHistory {
 			rows := []string{
@@ -399,7 +454,7 @@ func (m model) View() string {
 			content += "\n" + filterLine + "\n"
 			content += faintStyle.Render("enter to open · s search saved") + statsBlock + exportLine + importLine
 		} else {
-			content += "\n" + faintStyle.Render("enter to open · s search saved · / new search") + statsBlock + exportLine + importLine
+			content += "\n" + faintStyle.Render("enter to open · s search saved") + statsBlock + exportLine + importLine
 		}
 	}
 	} // end else (showImport)
@@ -413,8 +468,7 @@ func (m model) View() string {
 	}
 
 	hintText := "q to quit"
-	if m.state == viewResults || m.state == viewEpisodes || m.state == viewPlayer ||
-		(m.state == viewSearch && len(m.savedPodcasts) > 0) {
+	if m.state != viewHome {
 		hintText = "esc to go back  ·  q to quit"
 	}
 	quitHint := lipgloss.NewStyle().Width(m.windowWidth).Align(lipgloss.Center).Render(faintStyle.Render(hintText))

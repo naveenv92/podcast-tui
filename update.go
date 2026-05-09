@@ -33,10 +33,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case *gofeed.Feed:
 		m.feed = msg
-		m.state = viewEpisodes
-		m.cursor = 0
 		m.filteredEpisodes = nil
 		m.episodeFilter = ""
+		if m.autoPlayKey != "" {
+			key := m.autoPlayKey
+			m.autoPlayKey = ""
+			for i, item := range msg.Items {
+				if episodeKey(item) == key && len(item.Enclosures) > 0 {
+					m.state = viewPlayer
+					m.cursor = 0
+					m.playingIndex = i
+					m.totalDuration = parseDuration(item.ITunesExt.Duration)
+					m.playingTitle = item.Title
+					m.playingAlbumArt = m.albumArt
+					m.playingFeedURL = m.feedURL
+					m.playingPodcastTitle = msg.Title
+					m.playingEpisodeKey = key
+					resumeFrom := time.Duration(0)
+					if entry, ok := m.history[key]; ok {
+						resumeFrom = entry.Progress
+					}
+					if p, ok := m.savedPodcasts[m.feedURL]; ok && len(p.Categories) == 0 {
+						p.Categories = feedCategories(msg)
+						m.savedPodcasts[m.feedURL] = p
+						saveSaved(m.savedPodcasts)
+					}
+					return m, m.playAudio(item.Enclosures[0].URL, resumeFrom)
+				}
+			}
+			// Episode not found — fall through to normal episodes view
+		}
+		m.state = viewEpisodes
+		m.cursor = 0
 		if p, ok := m.savedPodcasts[m.feedURL]; ok && len(p.Categories) == 0 {
 			p.Categories = feedCategories(msg)
 			m.savedPodcasts[m.feedURL] = p
@@ -300,31 +328,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 				return m, nil
 			}
-			if m.state == viewSaved {
+			if m.state == viewHome {
+				return m, nil
+			}
+			if m.state == viewSaved || m.state == viewSearch || m.state == viewInProgress {
+				m.state = viewHome
+				m.cursor = 0
+				m.listeningStats = m.history.computeStats()
 				return m, nil
 			}
 			if m.state == viewEpisodes && m.fromSaved {
 				m.fromSaved = false
-				if len(m.savedPodcasts) > 0 {
-					m.state = viewSaved
-				} else {
-					m.state = viewSearch
-				}
-				m.cursor = 0
-				m.listeningStats = m.history.computeStats()
-				return m, nil
-			}
-			if m.state > viewSearch {
-				m.state--
-				if m.state == viewSearch || m.state == viewSaved {
-					m.listeningStats = m.history.computeStats()
-				}
-				return m, nil
-			}
-			if m.state == viewSearch && msg.String() == "esc" && len(m.savedPodcasts) > 0 {
 				m.state = viewSaved
 				m.cursor = 0
 				m.listeningStats = m.history.computeStats()
+				return m, nil
+			}
+			if m.state == viewEpisodes && m.fromInProgress {
+				m.fromInProgress = false
+				m.state = viewInProgress
+				m.cursor = 0
+				return m, nil
+			}
+			if m.state > viewHome {
+				m.state--
 				return m, nil
 			}
 		case "up", "k":
@@ -333,6 +360,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "down", "j":
 			switch m.state {
+			case viewHome:
+				if m.cursor < len(m.homeOptions())-1 {
+					m.cursor++
+				}
+			case viewInProgress:
+				if m.cursor < len(m.inProgressItems)-1 {
+					m.cursor++
+				}
 			case viewResults:
 				if m.cursor < len(m.searchResults)-1 {
 					m.cursor++
@@ -349,7 +384,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "p":
-			if m.state != viewSearch && m.pcmStreamer != nil {
+			if m.state != viewSearch && m.state != viewHome && m.pcmStreamer != nil {
 				m.state = viewPlayer
 				return m, nil
 			}
@@ -357,13 +392,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pcmStreamer != nil {
 				m.state = viewPlayer
 				return m, nil
-			}
-		case "/":
-			if m.state == viewSaved {
-				m.state = viewSearch
-				m.cursor = 0
-				m.listeningStats = m.history.computeStats()
-				return m, m.textInput.Focus()
 			}
 		case "ctrl+s":
 			if m.state == viewEpisodes && m.feed != nil {
@@ -387,11 +415,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "ctrl+e":
-			if m.state == viewSearch || m.state == viewSaved {
+			if m.state == viewHome || m.state == viewSearch || m.state == viewSaved {
 				return m, exportData(m.savedPodcasts, m.history)
 			}
 		case "ctrl+l":
-			if m.state == viewSearch || m.state == viewSaved {
+			if m.state == viewHome || m.state == viewSearch || m.state == viewSaved {
 				dir := exportDir()
 				m.importHistoryInput.SetValue(findLatestExport(dir, "podcast-tui-history-*.csv"))
 				m.importSavedInput.SetValue(findLatestExport(dir, "podcast-tui-saved-*.csv"))
@@ -465,7 +493,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "ctrl+d":
-			if m.state == viewSearch || m.state == viewSaved {
+			if m.state == viewHome || m.state == viewSearch || m.state == viewSaved {
 				m.showClearHistory = true
 				m.clearHistoryInput.SetValue("")
 				return m, m.clearHistoryInput.Focus()
@@ -525,7 +553,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, pos, m.speed, m.ffmpegGeneration)
 			}
 		case "enter":
-			if m.state == viewSaved {
+			if m.state == viewHome {
+				opts := m.homeOptions()
+				if m.cursor < len(opts) {
+					switch opts[m.cursor] {
+					case homeOptionInProgress:
+						m.inProgressItems = m.computeInProgressItems()
+						m.state = viewInProgress
+						m.cursor = 0
+					case homeOptionSaved:
+						m.state = viewSaved
+						m.cursor = 0
+						m.listeningStats = m.history.computeStats()
+					case homeOptionSearch:
+						m.state = viewSearch
+						m.cursor = 0
+						m.listeningStats = m.history.computeStats()
+						return m, m.textInput.Focus()
+					}
+				}
+				return m, nil
+			} else if m.state == viewInProgress {
+				if m.cursor < len(m.inProgressItems) {
+					item := m.inProgressItems[m.cursor]
+					m.feedURL = item.FeedURL
+					m.artworkURL = item.ArtworkURL
+					m.autoPlayKey = item.Key
+					m.fromInProgress = true
+					return m, tea.Batch(fetchFeed(item.FeedURL), fetchAlbumArt(item.ArtworkURL))
+				}
+			} else if m.state == viewSaved {
 				urls := m.savedDisplayURLs()
 				if m.cursor < len(urls) {
 					url := urls[m.cursor]
