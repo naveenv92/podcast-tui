@@ -359,6 +359,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 				return m, nil
 			}
+			if m.fromSearch && m.state == viewPlayer {
+				m.fromSearch = false
+				m.state = viewSearch
+				m.cursor = 0
+				return m, nil
+			}
 			if m.state > viewHome {
 				m.state--
 				return m, nil
@@ -398,6 +404,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+p":
 			if m.pcmStreamer != nil {
+				if m.state == viewSearch {
+					m.fromSearch = true
+				}
 				m.state = viewPlayer
 				return m, nil
 			}
