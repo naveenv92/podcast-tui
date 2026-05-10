@@ -412,6 +412,25 @@ func (m model) View() string {
 				content = dialog
 				break
 			}
+			if m.showClearSaved {
+				rows := []string{
+					accentStyle.Render("Clear Saved Podcasts"),
+					faintStyle.Render("This cannot be undone."),
+					"",
+					`Type "delete" and press Enter to confirm.`,
+					"",
+					m.clearSavedInput.View(),
+					"",
+					faintStyle.Render("Enter confirm · Esc cancel"),
+				}
+				dialog := lipgloss.NewStyle().
+					Border(lipgloss.RoundedBorder()).
+					BorderForeground(lipgloss.Color("205")).
+					Padding(1, 3).
+					Render(lipgloss.JoinVertical(lipgloss.Left, rows...))
+				content = dialog
+				break
+			}
 			if m.showSavedSearch {
 				rows := []string{
 					accentStyle.Render("Search Saved Podcasts"),
@@ -476,9 +495,9 @@ func (m model) View() string {
 						accentStyle.Render(`"`+m.savedFilter+`"`) +
 						faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
 					content += "\n" + filterLine + "\n"
-					content += faintStyle.Render("enter to open · s search saved · "+sortHint) + exportLine + importLine
+					content += faintStyle.Render("enter to open · s search · "+sortHint+" · ctrl+d delete all") + exportLine + importLine
 				} else {
-					content += "\n" + faintStyle.Render("enter to open · s search saved · "+sortHint) + exportLine + importLine
+					content += "\n" + faintStyle.Render("enter to open · s search · "+sortHint+" · ctrl+d delete all") + exportLine + importLine
 				}
 		}
 	} // end else (showImport)

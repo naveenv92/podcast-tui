@@ -234,6 +234,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.showClearSaved {
+			switch msg.String() {
+			case "esc":
+				m.showClearSaved = false
+				m.clearSavedInput.SetValue("")
+			case "enter":
+				if m.clearSavedInput.Value() == "delete" {
+					m.savedPodcasts = clearSaved()
+					m.latestEpisodeDates = make(map[string]time.Time)
+					m.filteredSaved = nil
+					m.savedFilter = ""
+					m.showClearSaved = false
+					m.clearSavedInput.SetValue("")
+					m.cursor = 0
+				}
+			default:
+				var cmd tea.Cmd
+				m.clearSavedInput, cmd = m.clearSavedInput.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
 		if m.showEpisodeSearch {
 			switch msg.String() {
 			case "esc":
@@ -539,7 +561,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "ctrl+d":
-			if m.state == viewHome || m.state == viewSearch || m.state == viewSaved {
+			if m.state == viewSaved {
+				m.showClearSaved = true
+				m.clearSavedInput.SetValue("")
+				return m, m.clearSavedInput.Focus()
+			}
+			if m.state == viewHome || m.state == viewSearch {
 				m.showClearHistory = true
 				m.clearHistoryInput.SetValue("")
 				return m, m.clearHistoryInput.Focus()

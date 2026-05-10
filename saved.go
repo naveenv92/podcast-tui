@@ -33,6 +33,12 @@ func loadSaved() SavedPodcasts {
 	return s
 }
 
+func clearSaved() SavedPodcasts {
+	s := make(SavedPodcasts)
+	saveSaved(s)
+	return s
+}
+
 func saveSaved(s SavedPodcasts) {
 	path := savedPath()
 	os.MkdirAll(filepath.Dir(path), 0755)

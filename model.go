@@ -72,6 +72,8 @@ type model struct {
 	playingEpisodeKey  string // history key snapshot at play time
 	showClearHistory   bool
 	clearHistoryInput  textinput.Model
+	showClearSaved     bool
+	clearSavedInput    textinput.Model
 	// episode search / filter
 	showEpisodeSearch  bool
 	episodeSearchInput textarea.Model
@@ -158,6 +160,10 @@ func initialModel() model {
 	chi.Placeholder = "delete"
 	chi.CharLimit = 6
 
+	csi := textinput.New()
+	csi.Placeholder = "delete"
+	csi.CharLimit = 6
+
 	ssi := textinput.New()
 	ssi.Placeholder = "Search by title or genre..."
 	ssi.CharLimit = 100
@@ -201,6 +207,7 @@ func initialModel() model {
 		textInput:          ti,
 		goToInput:          gti,
 		clearHistoryInput:  chi,
+		clearSavedInput:    csi,
 		episodeSearchInput: esi,
 		savedSearchInput:   ssi,
 		speed:              1.0,
