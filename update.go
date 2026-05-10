@@ -347,7 +347,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.listeningStats = m.history.computeStats()
 				return m, nil
 			}
-			if m.state == viewEpisodes && m.fromInProgress {
+			if m.fromInProgress && (m.state == viewEpisodes || m.state == viewPlayer) {
 				m.fromInProgress = false
 				m.state = viewInProgress
 				m.cursor = 0
