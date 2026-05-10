@@ -328,6 +328,8 @@ func (m model) View() string {
 					content += selStyle.Render("> "+row) + "\n"
 				} else if completed {
 					content += faintStyle.Render("  "+row) + "\n"
+				} else if inProgress {
+					content += inProgressStyle.Render("  "+row) + "\n"
 				} else {
 					content += "  " + row + "\n"
 				}

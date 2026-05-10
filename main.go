@@ -22,8 +22,9 @@ var (
 	accentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	faintStyle  = lipgloss.NewStyle().Faint(true)
 	selStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7FF")).Bold(true)
-	barStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
-	fillStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7FF"))
+	barStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#444444"))
+	fillStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7FF"))
+	inProgressStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#87D787"))
 )
 
 func main() {
