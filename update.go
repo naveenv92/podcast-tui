@@ -383,7 +383,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor++
 			}
 		case "p":
-			if m.state != viewSearch && m.state != viewHome && m.pcmStreamer != nil {
+			if m.state != viewSearch && m.pcmStreamer != nil {
 				m.state = viewPlayer
 				return m, nil
 			}
@@ -594,6 +594,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							speaker.Unlock()
 							m.paused = false
 						}
+						m.fromInProgress = true
 						m.state = viewPlayer
 						return m, nil
 					}

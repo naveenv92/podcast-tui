@@ -29,7 +29,7 @@ func (m model) renderNowPlayingBar() string {
 	}
 
 	toggleKey, playPauseKey := "p", "space"
-	if m.state == viewSearch || m.state == viewHome {
+	if m.state == viewSearch {
 		toggleKey, playPauseKey = "ctrl+p", "ctrl+k"
 	}
 	playPauseIcon := "⏸"
