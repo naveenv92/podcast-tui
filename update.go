@@ -587,6 +587,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.state == viewInProgress {
 				if m.cursor < len(m.inProgressItems) {
 					item := m.inProgressItems[m.cursor]
+					if item.Key == m.playingEpisodeKey && m.playingEpisodeKey != "" {
+						if m.paused {
+							speaker.Lock()
+							m.ctrl.Paused = false
+							speaker.Unlock()
+							m.paused = false
+						}
+						m.state = viewPlayer
+						return m, nil
+					}
 					m.feedURL = item.FeedURL
 					m.artworkURL = item.ArtworkURL
 					m.autoPlayKey = item.Key
