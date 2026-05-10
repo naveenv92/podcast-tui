@@ -206,6 +206,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.listeningStats = m.history.computeStats()
 					m.showClearHistory = false
 					m.clearHistoryInput.SetValue("")
+					speaker.Clear()
+					if m.ffmpegCmd != nil {
+						m.ffmpegCmd.Process.Kill()
+						go m.ffmpegCmd.Wait()
+						m.ffmpegCmd = nil
+					}
+					m.pcmStreamer = nil
+					m.ctrl = nil
+					m.playingEpisodeKey = ""
+					m.playingTitle = ""
+					m.playingFeedURL = ""
+					m.playingPodcastTitle = ""
+					m.currentURL = ""
 				}
 			default:
 				var cmd tea.Cmd
