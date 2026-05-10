@@ -113,20 +113,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case seekTimerMsg:
 		if msg.seq == m.seekSeq && m.pcmStreamer != nil {
-			if m.seekPending {
-				// A seek is still in-flight; retry once it has time to finish.
+			if !m.preWarmDone {
+				// Pre-warm still in flight — retry shortly.
 				m.seekSeq++
 				seq := m.seekSeq
-				target := m.seekOffset
-				return m, tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg {
+				target := msg.target
+				return m, tea.Tick(20*time.Millisecond, func(time.Time) tea.Msg {
 					return seekTimerMsg{target: target, seq: seq}
 				})
 			}
-			m.seekPending = true
-			return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, msg.target, m.speed, m.ffmpegGeneration)
+			if m.preWarmPayload != nil {
+				// Promote the staged payload — Stream() picks it up on next call.
+				select {
+				case old := <-m.pcmStreamer.pendSwap:
+					old.reader.Close()
+				default:
+				}
+				m.pcmStreamer.pendSwap <- *m.preWarmPayload
+				m.preWarmPayload = nil
+				if m.ffmpegCmd != nil {
+					m.ffmpegCmd.Process.Kill()
+					go m.ffmpegCmd.Wait()
+				}
+				m.ffmpegCmd = m.preWarmCmd
+				m.preWarmCmd = nil
+			} else {
+				// Pre-warm failed — fall back to a direct seek.
+				m.ffmpegGeneration++
+				return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, msg.target, m.speed, m.ffmpegGeneration)
+			}
 		}
 	case seekDoneMsg:
-		m.seekPending = false
 		if msg.cmd != nil {
 			if msg.gen == m.ffmpegGeneration {
 				// Valid seek for the current playback session: track the new process.
@@ -141,6 +158,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// the streamer closes the reader during the next swap.
 				go msg.cmd.Wait()
 			}
+		}
+	case preWarmDoneMsg:
+		if msg.gen == m.ffmpegGeneration {
+			m.preWarmDone = true
+			if msg.ok {
+				m.preWarmPayload = &msg.payload
+				m.preWarmCmd = msg.cmd
+			}
+		} else if msg.ok {
+			// Stale pre-warm — kill its process.
+			msg.cmd.Process.Kill()
+			go msg.cmd.Wait()
+			msg.payload.reader.Close()
 		}
 	case tickMsg:
 		if m.pcmStreamer != nil {
@@ -189,10 +219,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.showGoTo = false
 					m.goToErr = ""
 					m.goToInput.SetValue("")
+					m.cancelPreWarm()
 					m.seekOffset = target
 					atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
 					m.seekSeq++
-					m.seekPending = true
+					m.ffmpegGeneration++
 					return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, target, m.speed, m.ffmpegGeneration)
 				}
 			default:
@@ -357,6 +388,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			saveHistory(m.history)
+			m.cancelPreWarm()
 			if m.ffmpegCmd != nil {
 				m.ffmpegCmd.Process.Kill()
 			}
@@ -588,13 +620,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.pcmStreamer != nil {
 				target := max(m.currentPosition()-10*time.Second, 0)
+				m.cancelPreWarm()
 				m.seekOffset = target
 				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
 				m.seekSeq++
+				m.ffmpegGeneration++
 				seq := m.seekSeq
-				return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
-					return seekTimerMsg{target: target, seq: seq}
-				})
+				return m, tea.Batch(
+					doPreWarm(m.currentURL, target, m.speed, m.ffmpegGeneration),
+					tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg {
+						return seekTimerMsg{target: target, seq: seq}
+					}),
+				)
 			}
 		case "right":
 			if m.state == viewHome {
@@ -608,33 +645,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.totalDuration > 0 && target > m.totalDuration {
 					target = m.totalDuration
 				}
+				m.cancelPreWarm()
 				m.seekOffset = target
 				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
 				m.seekSeq++
+				m.ffmpegGeneration++
 				seq := m.seekSeq
-				return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
-					return seekTimerMsg{target: target, seq: seq}
-				})
+				return m, tea.Batch(
+					doPreWarm(m.currentURL, target, m.speed, m.ffmpegGeneration),
+					tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg {
+						return seekTimerMsg{target: target, seq: seq}
+					}),
+				)
 			}
 		case "-":
 			if m.speed > 0.5 && m.pcmStreamer != nil {
 				pos := m.currentPosition()
+				m.cancelPreWarm()
 				m.speed -= 0.25
 				m.seekOffset = pos
 				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
 				m.seekSeq++
-				m.seekPending = false
 				m.ffmpegGeneration++
 				return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, pos, m.speed, m.ffmpegGeneration)
 			}
 		case "+", "=":
 			if m.speed < 3.0 && m.pcmStreamer != nil {
 				pos := m.currentPosition()
+				m.cancelPreWarm()
 				m.speed += 0.25
 				m.seekOffset = pos
 				atomic.StoreInt64(&m.pcmStreamer.samplesPlayed, 0)
 				m.seekSeq++
-				m.seekPending = false
 				m.ffmpegGeneration++
 				return m, doSeek(m.pcmStreamer, m.ffmpegCmd, m.currentURL, pos, m.speed, m.ffmpegGeneration)
 			}

@@ -32,6 +32,47 @@ type seekTimerMsg struct {
 	seq    int
 }
 
+// preWarmDoneMsg is returned when a background pre-warm finishes.
+// ok=false means the ffmpeg process failed to start.
+type preWarmDoneMsg struct {
+	payload swapPayload
+	cmd     *exec.Cmd
+	gen     int
+	ok      bool
+}
+
+// doPreWarm starts a new ffmpeg at target and pre-reads a buffer, but does NOT
+// send to pendSwap — the caller decides when to promote it for a gapless swap.
+func doPreWarm(audioURL string, target time.Duration, speed float64, gen int) tea.Cmd {
+	return func() tea.Msg {
+		args := []string{"-loglevel", "error"}
+		if target > 0 {
+			args = append(args, "-ss", fmt.Sprintf("%.3f", target.Seconds()))
+		}
+		args = append(args,
+			"-i", audioURL,
+			"-af", buildAtempoFilter(speed),
+			"-f", "s16le", "-ar", "44100", "-ac", "2", "pipe:1",
+		)
+		cmd := exec.Command("ffmpeg", args...)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return preWarmDoneMsg{gen: gen}
+		}
+		if err := cmd.Start(); err != nil {
+			return preWarmDoneMsg{gen: gen}
+		}
+		prebuf := make([]byte, 4096*4)
+		n, _ := io.ReadFull(stdout, prebuf)
+		return preWarmDoneMsg{
+			payload: swapPayload{prebuf: prebuf[:n], reader: stdout, gen: gen},
+			cmd:     cmd,
+			gen:     gen,
+			ok:      true,
+		}
+	}
+}
+
 type tickMsg time.Time
 
 type ffmpegErrMsg struct {

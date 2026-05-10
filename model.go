@@ -56,8 +56,10 @@ type model struct {
 	statusMsg        string
 	exportMsg        string
 	ffmpegGeneration int
-	seekPending      bool // true while a background seek is in-flight
 	seekSeq          int  // incremented on each keypress to expire stale debounce timers
+	preWarmPayload   *swapPayload // staged pre-warmed audio, promoted to pendSwap by debounce timer
+	preWarmCmd       *exec.Cmd   // ffmpeg process backing preWarmPayload
+	preWarmDone      bool        // true when preWarmDoneMsg received for the current generation
 	statsTick        int  // counts playback ticks for 30s stats refresh
 	showGoTo         bool
 	goToInput        textinput.Model
@@ -271,7 +273,21 @@ func (m model) computeInProgressItems() []inProgressItem {
 	return items
 }
 
+func (m *model) cancelPreWarm() {
+	if m.preWarmPayload != nil {
+		m.preWarmPayload.reader.Close()
+		m.preWarmPayload = nil
+	}
+	if m.preWarmCmd != nil {
+		m.preWarmCmd.Process.Kill()
+		go m.preWarmCmd.Wait()
+		m.preWarmCmd = nil
+	}
+	m.preWarmDone = false
+}
+
 func (m *model) playAudio(audioURL string, seekTo time.Duration) tea.Cmd {
+	m.cancelPreWarm()
 	speaker.Clear()
 	if m.ffmpegCmd != nil {
 		m.ffmpegCmd.Process.Kill()
@@ -327,7 +343,6 @@ func (m *model) playAudio(audioURL string, seekTo time.Duration) tea.Cmd {
 	m.currentURL = audioURL
 	m.statusMsg = ""
 	m.paused = false
-	m.seekPending = false
 	m.seekSeq++
 	m.ffmpegGeneration++
 	gen := m.ffmpegGeneration
