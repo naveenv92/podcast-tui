@@ -90,6 +90,7 @@ type model struct {
 	savedPodcasts   SavedPodcasts
 	fromSaved       bool   // true when viewEpisodes was reached from viewSaved
 	fromInProgress  bool   // true when viewEpisodes was reached from viewInProgress
+	fromHome        bool   // true when viewPlayer was reached via p from viewHome
 	autoPlayKey     string // if set when a feed loads, auto-play the matching episode
 	artworkURL      string // artwork URL of the currently loaded podcast
 	inProgressItems []inProgressItem

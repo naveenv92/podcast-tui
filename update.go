@@ -353,6 +353,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 				return m, nil
 			}
+			if m.fromHome && m.state == viewPlayer {
+				m.fromHome = false
+				m.state = viewHome
+				m.cursor = 0
+				return m, nil
+			}
 			if m.state > viewHome {
 				m.state--
 				return m, nil
@@ -384,6 +390,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "p":
 			if m.state != viewSearch && m.pcmStreamer != nil {
+				if m.state == viewHome {
+					m.fromHome = true
+				}
 				m.state = viewPlayer
 				return m, nil
 			}
