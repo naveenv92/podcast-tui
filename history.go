@@ -47,10 +47,8 @@ func (h History) computeStats() ListeningStats {
 	return ListeningStats{TotalTime: total, MostListenedTitle: topTitle}
 }
 
-// isCompleted returns true for entries marked complete, including old entries
-// that predate the Completed field (identified by a non-zero ListenedAt).
 func (e HistoryEntry) isCompleted() bool {
-	return e.Completed || !e.ListenedAt.IsZero()
+	return e.Completed
 }
 
 type History map[string]HistoryEntry
