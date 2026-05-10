@@ -52,9 +52,9 @@ func searchPodcasts(query string) tea.Cmd {
 	}
 }
 
-type newEpisodesMsg struct {
+type latestEpisodeDateMsg struct {
 	feedURL string
-	count   int
+	date    time.Time
 }
 
 type feedErrMsg struct{ url string }
@@ -72,20 +72,19 @@ func fetchFeed(feedURL string) tea.Cmd {
 	}
 }
 
-func fetchNewEpisodeCount(feedURL string, since time.Time) tea.Cmd {
+func fetchLatestEpisodeDate(feedURL string) tea.Cmd {
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), networkTimeout)
+		defer cancel()
 		fp := gofeed.NewParser()
-		feed, err := fp.ParseURL(feedURL)
-		if err != nil || feed == nil {
-			return newEpisodesMsg{feedURL: feedURL, count: 0}
+		feed, err := fp.ParseURLWithContext(feedURL, ctx)
+		if err != nil || feed == nil || len(feed.Items) == 0 {
+			return latestEpisodeDateMsg{feedURL: feedURL}
 		}
-		count := 0
-		for _, item := range feed.Items {
-			if item.PublishedParsed != nil && item.PublishedParsed.After(since) {
-				count++
-			}
+		if feed.Items[0].PublishedParsed != nil {
+			return latestEpisodeDateMsg{feedURL: feedURL, date: *feed.Items[0].PublishedParsed}
 		}
-		return newEpisodesMsg{feedURL: feedURL, count: count}
+		return latestEpisodeDateMsg{feedURL: feedURL}
 	}
 }
 

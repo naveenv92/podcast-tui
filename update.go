@@ -15,10 +15,8 @@ import (
 
 func (m model) Init() tea.Cmd {
 	cmds := []tea.Cmd{textinput.Blink}
-	if !m.newEpisodesSince.IsZero() && len(m.savedPodcasts) > 0 {
-		for feedURL := range m.savedPodcasts {
-			cmds = append(cmds, fetchNewEpisodeCount(feedURL, m.newEpisodesSince))
-		}
+	for feedURL := range m.savedPodcasts {
+		cmds = append(cmds, fetchLatestEpisodeDate(feedURL))
 	}
 	return tea.Batch(cmds...)
 }
@@ -77,9 +75,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		saveHistory(m.history)
-	case newEpisodesMsg:
-		if msg.count > 0 {
-			m.newEpisodeCounts[msg.feedURL] = msg.count
+	case latestEpisodeDateMsg:
+		if !msg.date.IsZero() {
+			m.latestEpisodeDates[msg.feedURL] = msg.date
 		}
 		return m, nil
 	case feedErrMsg:

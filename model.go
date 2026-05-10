@@ -95,8 +95,7 @@ type model struct {
 	autoPlayKey     string // if set when a feed loads, auto-play the matching episode
 	artworkURL      string // artwork URL of the currently loaded podcast
 	inProgressItems []inProgressItem
-	newEpisodeCounts map[string]int // feedURL -> count of episodes since last open
-	newEpisodesSince time.Time      // lastOpenedAt from previous session (zero = first run)
+	latestEpisodeDates map[string]time.Time // feedURL -> publication date of most recent episode
 	listeningStats   ListeningStats
 	// import
 	showImport         bool
@@ -193,9 +192,6 @@ func initialModel() model {
 		initialState = viewHome
 	}
 
-	meta := loadMeta()
-	saveMeta(AppMeta{LastOpenedAt: time.Now()})
-
 	return model{
 		state:              initialState,
 		textInput:          ti,
@@ -206,8 +202,7 @@ func initialModel() model {
 		speed:              1.0,
 		history:            history,
 		savedPodcasts:      saved,
-		newEpisodeCounts:   make(map[string]int),
-		newEpisodesSince:   meta.LastOpenedAt,
+		latestEpisodeDates: make(map[string]time.Time),
 		listeningStats:     loadHistory().computeStats(),
 		importHistoryInput: ihp,
 		importSavedInput:   isp,

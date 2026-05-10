@@ -442,8 +442,8 @@ func (m model) View() string {
 				}
 				podcast := m.savedPodcasts[url]
 				suffix := ""
-				if count := m.newEpisodeCounts[url]; count > 0 {
-					suffix = " " + faintStyle.Render(fmt.Sprintf("(%d new)", count))
+				if d := m.latestEpisodeDates[url]; !d.IsZero() {
+					suffix = " " + faintStyle.Render("· "+d.Format("Jan 02, 2006"))
 				}
 				if m.cursor == i {
 					content += selStyle.Render("> "+podcast.Title) + suffix + "\n"
