@@ -13,6 +13,7 @@ type HistoryEntry struct {
 	Title        string        `json:"title"`
 	FeedURL      string        `json:"feedURL"`
 	PodcastTitle string        `json:"podcastTitle"`
+	ArtworkURL   string        `json:"artworkURL,omitempty"`
 	Progress     time.Duration `json:"progress"`
 	Completed    bool          `json:"completed"`
 	ListenedAt   time.Time     `json:"listenedAt"`

@@ -243,8 +243,8 @@ func (m model) computeInProgressItems() []inProgressItem {
 		if entry.isCompleted() || entry.Progress == 0 {
 			continue
 		}
-		artworkURL := ""
-		if p, ok := m.savedPodcasts[entry.FeedURL]; ok {
+		artworkURL := entry.ArtworkURL
+		if p, ok := m.savedPodcasts[entry.FeedURL]; ok && p.ArtworkURL != "" {
 			artworkURL = p.ArtworkURL
 		}
 		items = append(items, inProgressItem{

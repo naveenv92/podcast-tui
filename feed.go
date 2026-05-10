@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -17,6 +18,8 @@ import (
 	"github.com/nfnt/resize"
 )
 
+const networkTimeout = 10 * time.Second
+
 type SearchResult struct {
 	CollectionName string `json:"collectionName"`
 	FeedURL        string `json:"feedUrl"`
@@ -32,7 +35,17 @@ type albumArtMsg string
 func searchPodcasts(query string) tea.Cmd {
 	return func() tea.Msg {
 		endpoint := fmt.Sprintf("https://itunes.apple.com/search?term=%s&entity=podcast&limit=200", url.QueryEscape(query))
-		resp, _ := http.Get(endpoint)
+		ctx, cancel := context.WithTimeout(context.Background(), networkTimeout)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return SearchResponse{}
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return SearchResponse{}
+		}
+		defer resp.Body.Close()
 		var res SearchResponse
 		json.NewDecoder(resp.Body).Decode(&res)
 		return res
@@ -44,10 +57,17 @@ type newEpisodesMsg struct {
 	count   int
 }
 
-func fetchFeed(url string) tea.Cmd {
+type feedErrMsg struct{ url string }
+
+func fetchFeed(feedURL string) tea.Cmd {
 	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), networkTimeout)
+		defer cancel()
 		fp := gofeed.NewParser()
-		feed, _ := fp.ParseURL(url)
+		feed, err := fp.ParseURLWithContext(feedURL, ctx)
+		if err != nil || feed == nil {
+			return feedErrMsg{url: feedURL}
+		}
 		return feed
 	}
 }
@@ -69,9 +89,18 @@ func fetchNewEpisodeCount(feedURL string, since time.Time) tea.Cmd {
 	}
 }
 
-func fetchAlbumArt(url string) tea.Cmd {
+func fetchAlbumArt(artURL string) tea.Cmd {
 	return func() tea.Msg {
-		resp, err := http.Get(url)
+		if artURL == "" {
+			return albumArtMsg("")
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), networkTimeout)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, artURL, nil)
+		if err != nil {
+			return albumArtMsg("")
+		}
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return albumArtMsg("")
 		}

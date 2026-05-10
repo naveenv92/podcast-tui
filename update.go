@@ -82,6 +82,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.newEpisodeCounts[msg.feedURL] = msg.count
 		}
 		return m, nil
+	case feedErrMsg:
+		m.statusMsg = "Failed to load feed — check your connection"
+		m.autoPlayKey = ""
+		m.state = viewEpisodes
 	case albumArtMsg:
 		m.albumArt = string(msg)
 		if m.state == viewPlayer && m.playingFeedURL == m.feedURL {
@@ -149,17 +153,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				entry.Title = m.playingTitle
 				entry.FeedURL = m.playingFeedURL
 				entry.PodcastTitle = m.playingPodcastTitle
+				if m.artworkURL != "" {
+					entry.ArtworkURL = m.artworkURL
+				}
 				entry.Progress = pos
 				if m.totalDuration > 0 && pos >= m.totalDuration*95/100 && !entry.isCompleted() {
 					entry.Completed = true
 					entry.ListenedAt = time.Now()
 				}
 				m.history[key] = entry
-				saveHistory(m.history)
 			}
 			m.statsTick++
 			if m.statsTick%30 == 0 {
 				m.listeningStats = m.history.computeStats()
+			}
+			if m.statsTick%120 == 0 {
+				saveHistory(m.history)
 			}
 			return m, tick()
 		}
@@ -327,6 +336,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "ctrl+c", "q":
+			saveHistory(m.history)
 			if m.ffmpegCmd != nil {
 				m.ffmpegCmd.Process.Kill()
 			}
@@ -520,6 +530,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ctrl.Paused = !m.ctrl.Paused
 				m.paused = m.ctrl.Paused
 				speaker.Unlock()
+				saveHistory(m.history)
 				return m, nil
 			}
 		case "ctrl+d":
@@ -534,6 +545,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ctrl.Paused = !m.ctrl.Paused
 				m.paused = m.ctrl.Paused
 				speaker.Unlock()
+				saveHistory(m.history)
 			}
 		case "left":
 			if m.state == viewHome {
@@ -652,16 +664,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor = 0
 				return m, searchPodcasts(m.textInput.Value())
 			} else if m.state == viewResults {
-				res := m.searchResults[m.cursor]
-				m.feedURL = res.FeedURL
-				m.artworkURL = res.ArtworkURL
-				m.fromSaved = false
-				return m, tea.Batch(fetchFeed(res.FeedURL), fetchAlbumArt(res.ArtworkURL))
+				if m.cursor < len(m.searchResults) {
+					res := m.searchResults[m.cursor]
+					m.feedURL = res.FeedURL
+					m.artworkURL = res.ArtworkURL
+					m.fromSaved = false
+					return m, tea.Batch(fetchFeed(res.FeedURL), fetchAlbumArt(res.ArtworkURL))
+				}
 			} else if m.state == viewEpisodes {
-				m.state = viewPlayer
 				m.playingIndex = m.feedIndexAt(m.cursor)
 				item := m.feed.Items[m.playingIndex]
-				m.totalDuration = parseDuration(item.ITunesExt.Duration)
+				if len(item.Enclosures) == 0 {
+					m.statusMsg = "Episode has no audio"
+					return m, nil
+				}
+				m.state = viewPlayer
+				dur := ""
+				if item.ITunesExt != nil {
+					dur = item.ITunesExt.Duration
+				}
+				m.totalDuration = parseDuration(dur)
 				m.playingTitle = item.Title
 				m.playingAlbumArt = m.albumArt
 				m.playingFeedURL = m.feedURL
