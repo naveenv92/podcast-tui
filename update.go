@@ -84,6 +84,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case albumArtMsg:
 		m.albumArt = string(msg)
+		if m.state == viewPlayer && m.playingFeedURL == m.feedURL {
+			m.playingAlbumArt = m.albumArt
+		}
 	case ffmpegErrMsg:
 		if msg.generation == m.ffmpegGeneration && msg.text != "" {
 			m.statusMsg = "ffmpeg: " + msg.text
