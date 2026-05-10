@@ -132,7 +132,11 @@ func (m model) View() string {
 				if item.PodcastTitle != "" {
 					podcastPrefix = faintStyle.Render(item.PodcastTitle + " · ")
 				}
-				progress := faintStyle.Render("[" + formatDur(item.Progress) + " listened]")
+				progressText := formatDur(item.Progress) + " listened"
+				if item.Key == m.playingEpisodeKey && m.playingEpisodeKey != "" {
+					progressText = "Currently listening"
+				}
+				progress := faintStyle.Render("[" + progressText + "]")
 				line := podcastPrefix + item.EpisodeTitle + "  " + progress
 				if m.cursor == i {
 					content += selStyle.Render("> ") + line + "\n"
