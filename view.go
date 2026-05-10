@@ -435,7 +435,7 @@ func (m model) View() string {
 				savedScrollTop = m.cursor - savedVisibleCount + 1
 			}
 			content = titleStyle.Render("SAVED PODCASTS") + "\n\n"
-				header := fmt.Sprintf("  %-40s %s", "Podcast", "· Most Recent Episode")
+				header := "  Podcast · Most Recent Episode"
 				content += faintStyle.Render(header) + "\n"
 				content += faintStyle.Render("  "+strings.Repeat("─", len(header)-2)) + "\n"
 				rendered := 0
