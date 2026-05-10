@@ -435,7 +435,10 @@ func (m model) View() string {
 				savedScrollTop = m.cursor - savedVisibleCount + 1
 			}
 			content = titleStyle.Render("SAVED PODCASTS") + "\n\n"
-			rendered := 0
+				header := fmt.Sprintf("  %-40s %s", "Podcast", "· Most Recent Episode")
+				content += faintStyle.Render(header) + "\n"
+				content += faintStyle.Render("  "+strings.Repeat("─", len(header)-2)) + "\n"
+				rendered := 0
 			for i, url := range urls {
 				if i < savedScrollTop || i >= savedScrollTop+savedVisibleCount {
 					continue

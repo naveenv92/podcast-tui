@@ -441,6 +441,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						Categories: feedCategories(m.feed),
 					}
 					saveSaved(m.savedPodcasts)
+					return m, fetchLatestEpisodeDate(m.feedURL)
 				}
 				return m, nil
 			}
