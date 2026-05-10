@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type SavedPodcast struct {
@@ -55,6 +56,23 @@ func savedSortedURLs(s SavedPodcasts) []string {
 		urls = append(urls, url)
 	}
 	sort.Slice(urls, func(i, j int) bool {
+		return sortKey(s[urls[i]].Title) < sortKey(s[urls[j]].Title)
+	})
+	return urls
+}
+
+// savedSortedByDateURLs returns feed URLs sorted by most recent episode date
+// descending, with A-Z as a tiebreaker for podcasts with the same or missing date.
+func savedSortedByDateURLs(s SavedPodcasts, dates map[string]time.Time) []string {
+	urls := make([]string, 0, len(s))
+	for url := range s {
+		urls = append(urls, url)
+	}
+	sort.Slice(urls, func(i, j int) bool {
+		di, dj := dates[urls[i]], dates[urls[j]]
+		if !di.Equal(dj) {
+			return di.After(dj)
+		}
 		return sortKey(s[urls[i]].Title) < sortKey(s[urls[j]].Title)
 	})
 	return urls

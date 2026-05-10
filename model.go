@@ -77,11 +77,12 @@ type model struct {
 	episodeSearchInput textarea.Model
 	episodeFilter      string // raw query shown in UI; empty = no filter
 	filteredEpisodes   []int  // feed indices matching the filter; nil = no filter
-	// saved podcast filter
+	// saved podcast filter and sort
 	showSavedSearch  bool
 	savedSearchInput textinput.Model
 	savedFilter      string   // raw query; empty = no filter
 	filteredSaved    []string // feed URLs matching the filter; nil = no filter
+	savedSortByRecent bool    // false = A-Z, true = most recent episode first
 	// episode description modal
 	showEpisodeDesc   bool
 	episodeDescLines  []string
@@ -129,6 +130,9 @@ func (m model) episodeItemAt(i int) *gofeed.Item {
 func (m model) savedDisplayURLs() []string {
 	if m.filteredSaved != nil {
 		return m.filteredSaved
+	}
+	if m.savedSortByRecent {
+		return savedSortedByDateURLs(m.savedPodcasts, m.latestEpisodeDates)
 	}
 	return savedSortedURLs(m.savedPodcasts)
 }

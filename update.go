@@ -431,6 +431,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = viewPlayer
 				return m, nil
 			}
+		case "tab":
+			if m.state == viewSaved {
+				m.savedSortByRecent = !m.savedSortByRecent
+				m.cursor = 0
+				return m, nil
+			}
 		case "ctrl+s":
 			if m.state == viewEpisodes && m.feed != nil {
 				if _, ok := m.savedPodcasts[m.feedURL]; !ok {

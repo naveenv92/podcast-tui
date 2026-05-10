@@ -467,15 +467,19 @@ func (m model) View() string {
 			if m.importMsg != "" {
 				importLine = "\n\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("#00D7AF")).Render(m.importMsg)
 			}
-			if m.savedFilter != "" {
-				filterLine := faintStyle.Render("Filter: ") +
-					accentStyle.Render(`"`+m.savedFilter+`"`) +
-					faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
-				content += "\n" + filterLine + "\n"
-				content += faintStyle.Render("enter to open · s search saved") + exportLine + importLine
-			} else {
-				content += "\n" + faintStyle.Render("enter to open · s search saved") + exportLine + importLine
-			}
+			sortHint := "tab sort recent"
+				if m.savedSortByRecent {
+					sortHint = "tab sort a-z"
+				}
+				if m.savedFilter != "" {
+					filterLine := faintStyle.Render("Filter: ") +
+						accentStyle.Render(`"`+m.savedFilter+`"`) +
+						faintStyle.Render(fmt.Sprintf(" · %d result(s) · Esc to clear", len(m.filteredSaved)))
+					content += "\n" + filterLine + "\n"
+					content += faintStyle.Render("enter to open · s search saved · "+sortHint) + exportLine + importLine
+				} else {
+					content += "\n" + faintStyle.Render("enter to open · s search saved · "+sortHint) + exportLine + importLine
+				}
 		}
 	} // end else (showImport)
 	nowPlayingBar := ""
